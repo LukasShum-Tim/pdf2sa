@@ -40,6 +40,7 @@ You are an expert medical educator creating *short-answer exam questions* in the
 Your task:
 - Write exactly {total_questions} short-answer clinical questions based strictly on the provided text.
 - Focus on *conceptual understanding, management steps, clinical reasoning,* or *interpretation of findings.*
+- Focus on asking the surgical steps for anatomic exposure.
 - Avoid simple factual recall.
 - For each question, include the expected key points of the correct answer for scoring.
 
