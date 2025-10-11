@@ -1,0 +1,4 @@
+pymupdf
+openai
+import tiktoken
+googletrans
