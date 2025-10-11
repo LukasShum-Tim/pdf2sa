@@ -217,15 +217,28 @@ if st.session_state.get("questions_translated"):
 
 import streamlit as st
 import json
+import fitz  # PyMuPDF
 from googletrans import Translator
 from openai import OpenAI
 
-# Initialize OpenAI client
+# -------------------------------
+# INITIALIZATION
+# -------------------------------
 client = OpenAI()
+translator = Translator()
 
-# -------------------------
-# LANGUAGE CONFIGURATION
-# -------------------------
+st.set_page_config(
+    page_title="📘 Multilingual PDF Short-Answer Trainer",
+    page_icon="🧠",
+    layout="wide"
+)
+
+st.title("🧠 Multilingual Short-Answer Trainer from PDF")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your language, and get bilingual feedback.")
+
+# -------------------------------
+# LANGUAGE SELECTION
+# -------------------------------
 language_map = {
     "English": "en",
     "French": "fr",
@@ -238,90 +251,112 @@ language_map = {
     "Arabic": "ar",
     "Mandarin Chinese": "zh-cn",
 }
-
-translator = Translator()
-
-# -------------------------
-# PAGE CONFIGURATION
-# -------------------------
-st.set_page_config(
-    page_title="Multilingual Short-Answer Evaluator",
-    page_icon="🧠",
-    layout="wide"
-)
-
-st.title("🧠 Multilingual Short-Answer Evaluator")
-st.markdown("Evaluate your short-answer responses in any language with bilingual feedback.")
-
-# -------------------------
-# LANGUAGE SELECTION
-# -------------------------
 target_language_name = st.selectbox("🌍 Select your language:", list(language_map.keys()), index=0)
+target_lang_code = language_map[target_language_name]
 
-# -------------------------
-# INPUT SECTION
-# -------------------------
-st.subheader("✏️ Input Questions and Your Responses")
+# -------------------------------
+# PDF UPLOAD AND TEXT EXTRACTION
+# -------------------------------
+uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
 
-example_questions = [
-    {"question": "List the immediate priorities in trauma resuscitation.", "answer_key": "Assess airway, breathing, circulation, disability, exposure."},
-    {"question": "What is the first step in managing a patient with hemorrhagic shock?", "answer_key": "Control bleeding and initiate fluid resuscitation."}
+def extract_text_from_pdf(uploaded_file):
+    """Extract all text from an uploaded PDF."""
+    text = ""
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as pdf_doc:
+        for page in pdf_doc:
+            text += page.get_text("text")
+    return text
+
+pdf_text = ""
+if uploaded_file:
+    pdf_text = extract_text_from_pdf(uploaded_file)
+    st.success("✅ PDF uploaded and text extracted successfully!")
+
+# -------------------------------
+# QUESTION GENERATION
+# -------------------------------
+if pdf_text:
+    st.subheader("🧩 Step 1: Generate Short-Answer Questions")
+
+    num_questions = st.slider("Number of questions to generate:", 3, 10, 5)
+
+    if st.button("⚡ Generate Questions"):
+        with st.spinner("Generating questions from PDF content..."):
+            # Translate source text to English for consistent question generation
+            pdf_text_en = pdf_text
+            if target_language_name != "English":
+                pdf_text_en = translator.translate(pdf_text, dest="en").text
+
+            # Generate questions using GPT
+            prompt = f"""
+You are an expert medical educator.
+Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
+Focus on clinically relevant concepts, facts, or reasoning.
+
+Return ONLY JSON in the following format:
+[
+  {{"question": "string", "answer_key": "string"}},
+  ...
 ]
 
-# Allow user to input custom Q&A if desired
-questions = []
-for i, q in enumerate(example_questions):
-    question_text = st.text_input(f"Question {i+1}", value=q["question"])
-    answer_key = st.text_area(f"Expected Answer {i+1}", value=q["answer_key"], height=60)
-    questions.append({"question": question_text, "answer_key": answer_key})
+SOURCE TEXT:
+{pdf_text_en[:6000]}  # limit to avoid excessive prompt size
+"""
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.5
+                )
+                questions = json.loads(response.choices[0].message.content)
+                st.session_state["questions"] = questions
+                st.success(f"✅ Generated {len(questions)} questions successfully!")
+            except Exception as e:
+                st.error(f"⚠️ Question generation failed: {e}")
 
-user_answers = []
-st.subheader("💬 Your Answers")
-for i, q in enumerate(questions):
-    answer = st.text_area(f"Your Response to Question {i+1}", height=80)
-    user_answers.append(answer)
+# -------------------------------
+# USER ANSWERS INPUT
+# -------------------------------
+if "questions" in st.session_state:
+    st.subheader("🧠 Step 2: Answer the Questions")
 
-# -------------------------
-# GRADING FUNCTION
-# -------------------------
-def score_short_answers(user_answers, questions, target_language_name):
-    """
-    Scores user short answers by translating responses and answer keys into English
-    before evaluation, ensuring fairness across languages. Then automatically
-    translates feedback and model answers back into the user's selected language.
-    """
+    questions = st.session_state["questions"]
+    user_answers = []
+    for i, q in enumerate(questions):
+        st.markdown(f"**Q{i+1}. {q['question']}**")
+        answer = st.text_area(f"Your Answer {i+1} ({target_language_name})", height=80)
+        user_answers.append(answer)
 
-    # Step 1: Translate user responses and answer keys into English if needed
-    if target_language_name != "English":
-        translated_user_answers = [translator.translate(ans, dest="en").text for ans in user_answers]
-        translated_questions = [
-            {
-                "question": q["question"],
-                "answer_key": translator.translate(q["answer_key"], dest="en").text
-            }
-            for q in questions
-        ]
-    else:
-        translated_user_answers = user_answers
-        translated_questions = questions
+    # -------------------------------
+    # SCORING FUNCTION
+    # -------------------------------
+    def score_short_answers(user_answers, questions, target_language_name):
+        """Evaluate answers, translate for fairness, then return bilingual feedback."""
+        # Translate to English if needed
+        if target_language_name != "English":
+            translated_user_answers = [translator.translate(ans, dest="en").text for ans in user_answers]
+            translated_questions = [
+                {
+                    "question": q["question"],
+                    "answer_key": translator.translate(q["answer_key"], dest="en").text
+                } for q in questions
+            ]
+        else:
+            translated_user_answers = user_answers
+            translated_questions = questions
 
-    # Step 2: Build grading prompt for GPT
-    prompt = f"""
+        # GPT evaluation
+        grading_prompt = f"""
 You are an examiner for the Royal College of Physicians and Surgeons of Canada.
+Evaluate each short-answer response on a 0–2 scale (0 = incorrect, 1 = partial, 2 = complete).
+Give a short feedback and a concise model answer.
 
-Evaluate each of the following short-answer responses.
-For each question:
-- Score on a 0–2 scale (0 = incorrect, 1 = partially correct, 2 = fully correct).
-- Provide a concise 1–2 sentence feedback explaining the reasoning.
-- Provide a short "model answer" that summarizes the ideal expected response.
-
-Return ONLY valid JSON in this format:
-
+Return ONLY JSON:
 [
   {{
     "score": 2,
-    "feedback": "Excellent answer; you addressed all major steps of resuscitation.",
-    "model_answer": "Assess airway, breathing, and circulation; control external bleeding; establish IV access; start blood transfusion."
+    "feedback": "Strong answer, clearly identifies priorities.",
+    "model_answer": "Assess airway, breathing, circulation, and control hemorrhage."
   }},
   ...
 ]
@@ -332,59 +367,44 @@ QUESTIONS AND RESPONSES:
     for q, a in zip(translated_questions, translated_user_answers)
 ], indent=2)}
 """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": grading_prompt}],
+                temperature=0
+            )
+            results = json.loads(response.choices[0].message.content)
 
-    try:
-        # Step 3: Ask GPT to grade the answers
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        results = json.loads(response.choices[0].message.content)
+            # Translate feedback & model answers back into user language
+            if target_language_name != "English":
+                for r in results:
+                    r["feedback_translated"] = translator.translate(r["feedback"], dest=language_map[target_language_name]).text
+                    r["model_answer_translated"] = translator.translate(r["model_answer"], dest=language_map[target_language_name]).text
+            else:
+                for r in results:
+                    r["feedback_translated"] = r["feedback"]
+                    r["model_answer_translated"] = r["model_answer"]
 
-        # Step 4: Translate feedback and model answers back into the user's language
-        if target_language_name != "English":
-            for r in results:
-                r["feedback_translated"] = translator.translate(r["feedback"], dest=language_map[target_language_name]).text
-                r["model_answer_translated"] = translator.translate(r["model_answer"], dest=language_map[target_language_name]).text
-        else:
-            for r in results:
-                r["feedback_translated"] = r["feedback"]
-                r["model_answer_translated"] = r["model_answer"]
+            return results
 
-        return results
+        except Exception as e:
+            st.error(f"⚠️ Scoring failed: {e}")
+            return []
 
-    except Exception as e:
-        st.error(f"⚠️ Scoring failed: {e}")
-        return [
-            {
-                "score": 0,
-                "feedback": "Error during scoring",
-                "model_answer": "",
-                "feedback_translated": "Erreur lors de l'évaluation",
-                "model_answer_translated": ""
-            } for _ in questions
-        ]
-
-# -------------------------
-# SCORING ACTION
-# -------------------------
-if st.button("🚀 Evaluate My Answers"):
-    with st.spinner("Evaluating responses..."):
-        results = score_short_answers(user_answers, questions, target_language_name)
-
-    st.success("✅ Evaluation complete!")
-
-    # -------------------------
-    # DISPLAY RESULTS
-    # -------------------------
-    with st.expander("📊 Detailed Feedback"):
-        for i, (q, r) in enumerate(zip(questions, results)):
-            st.markdown(f"### Q{i+1}: {q['question']}")
-            st.markdown(f"**Expected answer (original):** {q['answer_key']}")
-            st.markdown(f"**Your score:** {r['score']} / 2")
-            st.markdown(f"**Feedback (English):** {r['feedback']}")
-            st.markdown(f"**Feedback ({target_language_name}):** {r['feedback_translated']}")
-            st.markdown(f"**Model answer (English):** {r['model_answer']}")
-            st.markdown(f"**Model answer ({target_language_name}):** {r['model_answer_translated']}")
-            st.markdown("---")
+    # -------------------------------
+    # EVALUATION
+    # -------------------------------
+    if st.button("🚀 Evaluate My Answers"):
+        with st.spinner("Evaluating answers..."):
+            results = score_short_answers(user_answers, questions, target_language_name)
+        if results:
+            st.success("✅ Evaluation complete!")
+            with st.expander("📊 Detailed Feedback"):
+                for i, (q, r) in enumerate(zip(questions, results)):
+                    st.markdown(f"### Q{i+1}: {q['question']}")
+                    st.markdown(f"**Score:** {r['score']} / 2")
+                    st.markdown(f"**Feedback (English):** {r['feedback']}")
+                    st.markdown(f"**Feedback ({target_language_name}):** {r['feedback_translated']}")
+                    st.markdown(f"**Model Answer (English):** {r['model_answer']}")
+                    st.markdown(f"**Model Answer ({target_language_name}):** {r['model_answer_translated']}")
+                    st.markdown("---")
