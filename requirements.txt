@@ -1,4 +1,4 @@
 pymupdf
 openai
-import tiktoken
+tiktoken
 googletrans
