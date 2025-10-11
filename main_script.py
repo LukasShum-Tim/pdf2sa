@@ -218,8 +218,8 @@ if st.session_state.get("questions_translated"):
 import streamlit as st
 import json
 import fitz  # PyMuPDF
-from googletrans import Translator
 from openai import OpenAI
+from googletrans import Translator
 
 # -------------------------------
 # INITIALIZATION
@@ -228,13 +228,39 @@ client = OpenAI()
 translator = Translator()
 
 st.set_page_config(
-    page_title="📘 Multilingual PDF Short-Answer Trainer",
+    page_title="📘 Multilingual Short-Answer Trainer",
     page_icon="🧠",
     layout="wide"
 )
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
 st.markdown("Upload a PDF, generate short-answer questions, answer in your language, and get bilingual feedback.")
+
+# -------------------------------
+# SAFE TRANSLATION FUNCTION
+# -------------------------------
+def safe_translate(text, target_language_code, fallback_model="gpt-4o-mini"):
+    """Translate text robustly with GPT fallback."""
+    if not text or not text.strip():
+        return text
+    try:
+        translated = translator.translate(text, dest=target_language_code)
+        if translated and hasattr(translated, "text"):
+            return translated.text
+    except Exception:
+        pass
+    # Fallback: GPT translation
+    try:
+        response = client.chat.completions.create(
+            model=fallback_model,
+            messages=[
+                {"role": "user", "content": f"Translate the following text into {target_language_code}:\n\n{text}"}
+            ],
+            temperature=0
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return text  # Return original if all fails
 
 # -------------------------------
 # LANGUAGE SELECTION
@@ -282,25 +308,23 @@ if pdf_text:
 
     if st.button("⚡ Generate Questions"):
         with st.spinner("Generating questions from PDF content..."):
-            # Translate source text to English for consistent question generation
-            pdf_text_en = pdf_text
-            if target_language_name != "English":
-                pdf_text_en = translator.translate(pdf_text, dest="en").text
+            # Translate source text to English for consistent generation
+            pdf_text_en = safe_translate(pdf_text, "en")
 
-            # Generate questions using GPT
+            # GPT prompt for question generation
             prompt = f"""
 You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
 Focus on clinically relevant concepts, facts, or reasoning.
 
-Return ONLY JSON in the following format:
+Return ONLY JSON in the format:
 [
   {{"question": "string", "answer_key": "string"}},
   ...
 ]
 
 SOURCE TEXT:
-{pdf_text_en[:6000]}  # limit to avoid excessive prompt size
+{pdf_text_en[:6000]}
 """
             try:
                 response = client.chat.completions.create(
@@ -334,12 +358,10 @@ if "questions" in st.session_state:
         """Evaluate answers, translate for fairness, then return bilingual feedback."""
         # Translate to English if needed
         if target_language_name != "English":
-            translated_user_answers = [translator.translate(ans, dest="en").text for ans in user_answers]
+            translated_user_answers = [safe_translate(ans, "en") for ans in user_answers]
             translated_questions = [
-                {
-                    "question": q["question"],
-                    "answer_key": translator.translate(q["answer_key"], dest="en").text
-                } for q in questions
+                {"question": q["question"], "answer_key": safe_translate(q["answer_key"], "en")}
+                for q in questions
             ]
         else:
             translated_user_answers = user_answers
@@ -376,14 +398,9 @@ QUESTIONS AND RESPONSES:
             results = json.loads(response.choices[0].message.content)
 
             # Translate feedback & model answers back into user language
-            if target_language_name != "English":
-                for r in results:
-                    r["feedback_translated"] = translator.translate(r["feedback"], dest=language_map[target_language_name]).text
-                    r["model_answer_translated"] = translator.translate(r["model_answer"], dest=language_map[target_language_name]).text
-            else:
-                for r in results:
-                    r["feedback_translated"] = r["feedback"]
-                    r["model_answer_translated"] = r["model_answer"]
+            for r in results:
+                r["feedback_translated"] = safe_translate(r["feedback"], target_lang_code)
+                r["model_answer_translated"] = safe_translate(r["model_answer"], target_lang_code)
 
             return results
 
