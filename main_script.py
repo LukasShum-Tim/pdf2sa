@@ -1,10 +1,19 @@
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
 import json
+import tiktoken
 from openai import OpenAI
 from googletrans import Translator
-from streamlit_audiorecorder import audiorecorder
 import tempfile
+import soundfile as sf
+import numpy as np
+
+# GitHub-based streamlit-audiorecorder
+try:
+    from streamlit_audiorecorder import audiorecorder
+    AUDIOMODULE_AVAILABLE = True
+except ModuleNotFoundError:
+    AUDIOMODULE_AVAILABLE = False
 
 # ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -44,6 +53,20 @@ def extract_text_from_pdf(file_obj):
     doc = fitz.open(stream=file_obj.read(), filetype="pdf")
     return "\n".join([page.get_text() for page in doc])
 
+def split_text_into_chunks(text, max_tokens=2500):
+    enc = tiktoken.get_encoding("cl100k_base")
+    words = text.split()
+    chunks, current_chunk = [], []
+    for word in words:
+        current_chunk.append(word)
+        tokens = len(enc.encode(" ".join(current_chunk)))
+        if tokens >= max_tokens:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    return chunks
+
 # ----------------- GPT Short Answer Generation -----------------
 def generate_short_answer_questions(text, total_questions=5):
     prompt = f"""
@@ -57,7 +80,8 @@ Generate exactly {total_questions} questions in JSON format:
   {{
     "question": "Question text?",
     "answer_key": "Expected answer in English."
-  }}
+  }},
+  ...
 ]
 
 Return only valid JSON.
@@ -97,6 +121,7 @@ def score_short_answers(user_answers, questions):
 # ----------------- PDF Upload -----------------
 uploaded_file = st.file_uploader("📤 Upload your PDF file", type=["pdf"])
 if uploaded_file:
+    st.success("✅ PDF uploaded successfully.")
     pdf_text = extract_text_from_pdf(uploaded_file)
     st.session_state["pdf_text"] = pdf_text
     with st.expander("🔍 Preview Extracted Text"):
@@ -105,8 +130,12 @@ if uploaded_file:
     total_questions = st.slider("🔢 Number of questions", 1, 20, 5)
 
     if st.button("🧠 Generate Questions"):
-        questions = generate_short_answer_questions(pdf_text, total_questions)
+        chunks = split_text_into_chunks(pdf_text)
+        first_chunk = chunks[0] if chunks else pdf_text
+        with st.spinner("Generating questions..."):
+            questions = generate_short_answer_questions(first_chunk, total_questions)
         if questions:
+            # Add English translations for evaluation
             for q in questions:
                 q["question_en"] = translate_text(q["question"], "en")
                 q["answer_key_en"] = translate_text(q["answer_key"], "en")
@@ -126,30 +155,39 @@ if st.session_state.get("questions"):
         st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question']}")
         st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
 
-        # Browser-based voice recorder
-        audio_bytes = audiorecorder(
-            translate_text("🎤 Start Recording", target_language_code),
-            translate_text("⏹️ Stop Recording", target_language_code)
-        )
+        # Voice recording if module is available
+        if AUDIOMODULE_AVAILABLE:
+            audio_data = audiorecorder(
+                translate_text("🎤 Start Recording", target_language_code),
+                translate_text("⏹️ Stop Recording", target_language_code)
+            )
 
-        user_input = st.text_area(
-            "",
-            key=f"ans_{idx}",
-            placeholder=translate_text("Type your answer here...", target_language_code)
-        )
+            user_input = st.text_area(
+                "",
+                key=f"ans_{idx}",
+                placeholder=translate_text("Type your answer here...", target_language_code)
+            )
 
-        if audio_bytes:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-                tmpfile.write(audio_bytes)
-                audio_path = tmpfile.name
-            st.audio(audio_path, format="audio/wav")
-            with open(audio_path, "rb") as f:
-                transcript = client.audio.transcriptions.create(
-                    model="gpt-4o-mini-transcribe",
-                    file=f
-                )
-            user_input = transcript.text
-            st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
+            if len(audio_data) > 0:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
+                    tmpfile.write(audio_data.tobytes())
+                    audio_path = tmpfile.name
+                st.audio(audio_path, format="audio/wav")
+
+                with open(audio_path, "rb") as f:
+                    transcript = client.audio.transcriptions.create(
+                        model="gpt-4o-mini-transcribe",
+                        file=f
+                    )
+                user_input = transcript.text
+                st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
+        else:
+            # Fallback: only text input
+            user_input = st.text_area(
+                "",
+                key=f"ans_{idx}",
+                placeholder=translate_text("Type your answer here...", target_language_code)
+            )
 
         user_answers.append(user_input)
 
@@ -163,4 +201,5 @@ if st.session_state.get("questions"):
                 st.markdown(f"- 💬 {translate_text('Your Response', target_language_code)}: {r['response']}")
                 st.markdown(f"- {translate_text('Correct?', target_language_code)}: {r['is_correct']}")
                 st.markdown("---")
+
 
