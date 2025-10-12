@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-import pymupdf as fitz  # PyMuPDF
+import pymupdf fitz  # PyMuPDF
 from openai import OpenAI
 from googletrans import Translator
 import time
@@ -18,14 +18,14 @@ st.set_page_config(
 )
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
-st.markdown("Upload a PDF, generate short-answer questions, answer in your language, and get bilingual feedback.")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
 
 # -------------------------------
-# SAFE TRANSLATION FUNCTION
+# SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_code):
-    """Translate text with fallback to GPT."""
+    """Translate text safely with fallback to GPT."""
     if not text or not text.strip():
         return text
     try:
@@ -38,7 +38,7 @@ def safe_translate(text, target_language_code):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "user", "content": f"Translate this into {target_language_code}:\n{text}"}
+                {"role": "user", "content": f"Translate this text into {target_language_code}:\n{text}"}
             ],
             temperature=0
         )
@@ -64,10 +64,15 @@ language_map = {
 target_language_name = st.selectbox("🌍 Select your language:", list(language_map.keys()), index=0)
 target_lang_code = language_map[target_language_name]
 
+def bilingual_text(en_text):
+    """Display English + Translated text together."""
+    translated = safe_translate(en_text, target_lang_code)
+    return f"{en_text}\n**({target_language_name})**: {translated}"
+
 # -------------------------------
 # PDF UPLOAD
 # -------------------------------
-uploaded_file = st.file_uploader("📄 Upload a PDF file", type=["pdf"])
+uploaded_file = st.file_uploader(bilingual_text("📄 Upload a PDF file"), type=["pdf"])
 
 def extract_text_from_pdf(uploaded_file):
     text = ""
@@ -79,22 +84,25 @@ def extract_text_from_pdf(uploaded_file):
 pdf_text = ""
 if uploaded_file:
     pdf_text = extract_text_from_pdf(uploaded_file)
-    st.success("✅ PDF uploaded successfully!")
+    st.success(bilingual_text("✅ PDF uploaded successfully!"))
 
 # -------------------------------
 # QUESTION GENERATION
 # -------------------------------
 if pdf_text:
-    st.subheader("🧩 Step 1: Generate Short-Answer Questions")
+    st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider("Number of questions to generate:", 3, 10, 5)
+    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 3, 10, 5)
 
-    if st.button("⚡ Generate Questions"):
-        with st.spinner("Generating questions (this may take up to 30 seconds)..."):
-            # Use only first 4000 characters for speed
-            trimmed_text = pdf_text[:4000]
+    if st.button(bilingual_text("⚡ Generate Questions")):
+        progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
-            prompt = f"""
+        # Limit text size for speed
+        trimmed_text = pdf_text[:4000]
+        time.sleep(0.2)
+        progress.progress(10, text=bilingual_text("Preparing content..."))
+
+        prompt = f"""
 You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys
 based on the following content. Focus on clinically relevant key facts.
@@ -108,48 +116,52 @@ Return ONLY JSON in this format:
 SOURCE TEXT:
 {trimmed_text}
 """
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-mini",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.5
-                )
-                raw = response.choices[0].message.content.strip()
-                questions = json.loads(raw)
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5
+            )
+            raw = response.choices[0].message.content.strip()
+            questions = json.loads(raw)
+            progress.progress(40, text=bilingual_text("Translating questions..."))
 
-                bilingual_questions = []
-                for q in questions:
-                    q_en = q.get("question", "")
-                    a_en = q.get("answer_key", "")
-                    q_trans = safe_translate(q_en, target_lang_code)
-                    a_trans = safe_translate(a_en, target_lang_code)
-                    bilingual_questions.append({
-                        "question_en": q_en,
-                        "question_translated": q_trans,
-                        "answer_key_en": a_en,
-                        "answer_key_translated": a_trans
-                    })
+            bilingual_questions = []
+            for i, q in enumerate(questions):
+                q_en = q.get("question", "")
+                a_en = q.get("answer_key", "")
+                q_trans = safe_translate(q_en, target_lang_code)
+                a_trans = safe_translate(a_en, target_lang_code)
+                bilingual_questions.append({
+                    "question_en": q_en,
+                    "question_translated": q_trans,
+                    "answer_key_en": a_en,
+                    "answer_key_translated": a_trans
+                })
+                progress.progress(40 + int((i+1)/len(questions)*50), text=bilingual_text("Translating..."))
 
-                st.session_state["questions"] = bilingual_questions
-                st.session_state["user_answers"] = [""] * len(bilingual_questions)
-                st.success(f"✅ Generated {len(bilingual_questions)} bilingual questions successfully!")
+            st.session_state["questions"] = bilingual_questions
+            st.session_state["user_answers"] = [""] * len(bilingual_questions)
+            progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+            st.success(bilingual_text(f"Generated {len(bilingual_questions)} bilingual questions successfully!"))
 
-            except Exception as e:
-                st.error(f"⚠️ Question generation failed: {e}")
+        except Exception as e:
+            st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
 # USER ANSWERS
 # -------------------------------
 if "questions" in st.session_state:
-    st.subheader("🧠 Step 2: Answer the Questions")
+    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
     user_answers = st.session_state.get("user_answers", [""] * len(questions))
 
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
-        st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
-        user_answers[i] = st.text_area(f"Your Answer {i+1}", value=user_answers[i], height=80, key=f"ans_{i}")
+        st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
+        label = bilingual_text("✏️ Your Answer:")
+        user_answers[i] = st.text_area(label, value=user_answers[i], height=80, key=f"ans_{i}")
 
     st.session_state["user_answers"] = user_answers
 
@@ -187,15 +199,15 @@ QUESTIONS AND RESPONSES:
                 r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
             return results
         except Exception as e:
-            st.error(f"⚠️ Scoring failed: {e}")
+            st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
             return []
 
-    if st.button("🚀 Evaluate My Answers"):
-        with st.spinner("Evaluating answers..."):
+    if st.button(bilingual_text("🚀 Evaluate My Answers")):
+        with st.spinner(bilingual_text("Evaluating your answers...")):
             results = score_short_answers(user_answers, questions)
         if results:
-            st.success("✅ Evaluation complete!")
-            with st.expander("📊 Detailed Feedback"):
+            st.success(bilingual_text("✅ Evaluation complete!"))
+            with st.expander(bilingual_text("📊 Detailed Feedback")):
                 for i, (q, r) in enumerate(zip(questions, results)):
                     st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
                     st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
@@ -205,3 +217,4 @@ QUESTIONS AND RESPONSES:
                     st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                     st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                     st.markdown("---")
+
