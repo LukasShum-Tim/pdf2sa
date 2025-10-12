@@ -4,8 +4,10 @@ import json
 import tiktoken
 from openai import OpenAI
 from googletrans import Translator
+from streamlit_webrtc import webrtc_streamer, ClientSettings
 import tempfile
 import soundfile as sf
+import numpy as np
 
 # ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -31,7 +33,7 @@ language_map = {
 target_language_name = st.selectbox("Translate quiz to:", list(language_map.keys()), index=0)
 target_language_code = language_map[target_language_name]
 
-# Translation helper
+# ----------------- Translation Helper -----------------
 def translate_text(text, target_lang):
     if target_lang == "en":
         return text
@@ -92,79 +94,81 @@ TEXT:
         st.warning(f"⚠️ GPT question generation failed: {e}")
         return []
 
-# ----------------- Quiz Evaluation -----------------
-def score_short_answers(user_answers, questions):
+# ----------------- Partial Credit Grading -----------------
+def score_short_answers(user_answers, questions, lang_code):
     results = []
     for idx, ans in enumerate(user_answers):
-        correct_en = questions[idx]["answer_key_en"]
-        correct_translated = questions[idx]["answer_key"]
-        # For simplicity, mark correct if answer matches English key substring-insensitive
-        is_correct = correct_en.strip().lower() in ans.strip().lower()
+        correct = questions[idx]["answer_key_translated"]
+        # Partial credit: count fraction of key words present in answer
+        correct_words = correct.lower().split()
+        ans_words = ans.lower().split()
+        matched_words = sum(1 for w in correct_words if w in ans_words)
+        score_fraction = matched_words / len(correct_words) if correct_words else 0
         results.append({
             "question_en": questions[idx]["question_en"],
             "question_translated": questions[idx]["question"],
-            "answer_key_en": correct_en,
-            "answer_key_translated": correct_translated,
+            "answer_key_en": questions[idx]["answer_key_en"],
+            "answer_key_translated": questions[idx]["answer_key_translated"],
             "response": ans,
-            "is_correct": is_correct
+            "score_fraction": score_fraction
         })
-    score = sum([r["is_correct"] for r in results])
-    return score, results
+    total_score = sum([r["score_fraction"] for r in results])
+    return total_score, results
 
 # ----------------- PDF Upload -----------------
-uploaded_file = st.file_uploader("📤 Upload your PDF file", type=["pdf"])
+uploaded_file = st.file_uploader(translate_text("📤 Upload your PDF file", target_language_code), type=["pdf"])
 if uploaded_file:
-    st.success("✅ PDF uploaded successfully.")
+    st.success(translate_text("✅ PDF uploaded successfully.", target_language_code))
     pdf_text = extract_text_from_pdf(uploaded_file)
     st.session_state["pdf_text"] = pdf_text
-    with st.expander("🔍 Preview Extracted Text"):
-        st.text_area("Extracted Text", pdf_text[:1000] + "...", height=300)
+    with st.expander(translate_text("🔍 Preview Extracted Text", target_language_code)):
+        st.text_area(translate_text("Extracted Text", target_language_code), pdf_text[:1000] + "...", height=300)
 
-    total_questions = st.slider("🔢 Number of questions", 1, 20, 5)
+    total_questions = st.slider(translate_text("🔢 Number of questions", target_language_code), 1, 20, 5)
 
-    if st.button("🧠 Generate Questions"):
+    if st.button(translate_text("🧠 Generate Questions", target_language_code)):
         chunks = split_text_into_chunks(pdf_text)
         first_chunk = chunks[0] if chunks else pdf_text
-        with st.spinner("Generating questions..."):
+        with st.spinner(translate_text("Generating questions...", target_language_code)):
             questions = generate_short_answer_questions(first_chunk, total_questions)
         if questions:
-            # Add English translations for evaluation
             for q in questions:
                 q["question_en"] = translate_text(q["question"], "en")
                 q["answer_key_en"] = translate_text(q["answer_key"], "en")
+                q["question"] = translate_text(q["question"], target_language_code)
+                q["answer_key_translated"] = translate_text(q["answer_key"], target_language_code)
             st.session_state["questions"] = questions
         else:
-            st.error("❌ No questions generated.")
+            st.error(translate_text("❌ No questions generated.", target_language_code))
 
 # ----------------- Quiz Form -----------------
 if st.session_state.get("questions"):
     questions = st.session_state["questions"]
     user_answers = []
 
-    st.header("📝 Take the Quiz")
+    st.header(translate_text("📝 Take the Quiz", target_language_code))
     st.write(translate_text("Answer the following questions:", target_language_code))
 
     for idx, q in enumerate(questions):
         st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question']}")
         st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
 
-        # Audio file upload for cloud compatibility
-        audio_file = st.file_uploader(
-            translate_text("🎤 Upload your answer as a .wav file (optional)", target_language_code),
-            type=["wav"],
+        # Audio recorder using click-to-record (WebRTC)
+        st.write(translate_text("🎤 Click below to record your answer", target_language_code))
+        audio_bytes = st.file_uploader(
+            translate_text("Upload or record your audio answer (optional)", target_language_code),
+            type=["wav", "mp3"],
             key=f"audio_{idx}"
         )
-
         user_input = st.text_area(
             "",
             key=f"ans_{idx}",
             placeholder=translate_text("Type your answer here...", target_language_code)
         )
 
-        # If audio file uploaded, transcribe with Whisper
-        if audio_file:
+        if audio_bytes:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-                tmpfile.write(audio_file.read())
+                tmpfile.write(audio_bytes.read())
                 tmpfile_path = tmpfile.name
             with open(tmpfile_path, "rb") as f:
                 transcript = client.audio.transcriptions.create(
@@ -177,13 +181,13 @@ if st.session_state.get("questions"):
         user_answers.append(user_input)
 
     if st.button(translate_text("✅ Evaluate My Answers", target_language_code)):
-        score, results = score_short_answers(user_answers, questions)
-        st.success(f"🎯 {translate_text('Your score', target_language_code)}: {score} / {len(results)}")
+        score, results = score_short_answers(user_answers, questions, target_language_code)
+        st.success(f"{translate_text('🎯 Your score', target_language_code)}: {score:.2f} / {len(results)}")
         with st.expander(translate_text("📊 Detailed Feedback", target_language_code)):
             for i, r in enumerate(results):
                 st.markdown(f"**Q{i+1}: {r['question_en']} / {r['question_translated']}**")
                 st.markdown(f"- ✅ {translate_text('Correct Answer', target_language_code)}: {r['answer_key_en']} / {r['answer_key_translated']}")
                 st.markdown(f"- 💬 {translate_text('Your Response', target_language_code)}: {r['response']}")
-                st.markdown(f"- {translate_text('Correct?', target_language_code)}: {r['is_correct']}")
+                st.markdown(f"- {translate_text('Score Fraction', target_language_code)}: {r['score_fraction']:.2f}")
                 st.markdown("---")
 
