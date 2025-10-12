@@ -1,13 +1,10 @@
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
 import json
-import tiktoken
 from openai import OpenAI
 from googletrans import Translator
-from audiorecorder import audiorecorder
+from streamlit_audiorecorder import audiorecorder
 import tempfile
-import soundfile as sf
-import numpy as np
 
 # ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -33,7 +30,7 @@ language_map = {
 target_language_name = st.selectbox("Translate quiz to:", list(language_map.keys()), index=0)
 target_language_code = language_map[target_language_name]
 
-# Translation helper
+# ----------------- Translation Helper -----------------
 def translate_text(text, target_lang):
     if target_lang == "en":
         return text
@@ -46,20 +43,6 @@ def translate_text(text, target_lang):
 def extract_text_from_pdf(file_obj):
     doc = fitz.open(stream=file_obj.read(), filetype="pdf")
     return "\n".join([page.get_text() for page in doc])
-
-def split_text_into_chunks(text, max_tokens=2500):
-    enc = tiktoken.get_encoding("cl100k_base")
-    words = text.split()
-    chunks, current_chunk = [], []
-    for word in words:
-        current_chunk.append(word)
-        tokens = len(enc.encode(" ".join(current_chunk)))
-        if tokens >= max_tokens:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-    return chunks
 
 # ----------------- GPT Short Answer Generation -----------------
 def generate_short_answer_questions(text, total_questions=5):
@@ -74,8 +57,7 @@ Generate exactly {total_questions} questions in JSON format:
   {{
     "question": "Question text?",
     "answer_key": "Expected answer in English."
-  }},
-  ...
+  }}
 ]
 
 Return only valid JSON.
@@ -95,12 +77,11 @@ TEXT:
         return []
 
 # ----------------- Quiz Evaluation -----------------
-def score_short_answers(user_answers, questions, lang_code):
+def score_short_answers(user_answers, questions):
     results = []
     for idx, ans in enumerate(user_answers):
         correct_en = questions[idx]["answer_key_en"]
         correct_translated = questions[idx]["answer_key"]
-        # For simplicity, mark correct if answer matches English key substring-insensitive
         is_correct = correct_en.strip().lower() in ans.strip().lower()
         results.append({
             "question_en": questions[idx]["question_en"],
@@ -116,7 +97,6 @@ def score_short_answers(user_answers, questions, lang_code):
 # ----------------- PDF Upload -----------------
 uploaded_file = st.file_uploader("📤 Upload your PDF file", type=["pdf"])
 if uploaded_file:
-    st.success("✅ PDF uploaded successfully.")
     pdf_text = extract_text_from_pdf(uploaded_file)
     st.session_state["pdf_text"] = pdf_text
     with st.expander("🔍 Preview Extracted Text"):
@@ -125,12 +105,8 @@ if uploaded_file:
     total_questions = st.slider("🔢 Number of questions", 1, 20, 5)
 
     if st.button("🧠 Generate Questions"):
-        chunks = split_text_into_chunks(pdf_text)
-        first_chunk = chunks[0] if chunks else pdf_text
-        with st.spinner("Generating questions..."):
-            questions = generate_short_answer_questions(first_chunk, total_questions)
+        questions = generate_short_answer_questions(pdf_text, total_questions)
         if questions:
-            # Add English translations for evaluation
             for q in questions:
                 q["question_en"] = translate_text(q["question"], "en")
                 q["answer_key_en"] = translate_text(q["answer_key"], "en")
@@ -150,8 +126,8 @@ if st.session_state.get("questions"):
         st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question']}")
         st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
 
-        # Voice recording
-        audio_data = audiorecorder(
+        # Browser-based voice recorder
+        audio_bytes = audiorecorder(
             translate_text("🎤 Start Recording", target_language_code),
             translate_text("⏹️ Stop Recording", target_language_code)
         )
@@ -162,9 +138,9 @@ if st.session_state.get("questions"):
             placeholder=translate_text("Type your answer here...", target_language_code)
         )
 
-        if len(audio_data) > 0:
+        if audio_bytes:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-                sf.write(tmpfile.name, audio_data.tobytes(), samplerate=44100, subtype='PCM_16')
+                tmpfile.write(audio_bytes)
                 audio_path = tmpfile.name
             st.audio(audio_path, format="audio/wav")
             with open(audio_path, "rb") as f:
@@ -178,7 +154,7 @@ if st.session_state.get("questions"):
         user_answers.append(user_input)
 
     if st.button(translate_text("✅ Evaluate My Answers", target_language_code)):
-        score, results = score_short_answers(user_answers, questions, target_language_code)
+        score, results = score_short_answers(user_answers, questions)
         st.success(f"🎯 {translate_text('Your score', target_language_code)}: {score} / {len(results)}")
         with st.expander(translate_text("📊 Detailed Feedback", target_language_code)):
             for i, r in enumerate(results):
