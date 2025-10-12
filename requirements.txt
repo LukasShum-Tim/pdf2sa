@@ -5,3 +5,4 @@ soundfile
 numpy
 googletrans
 tiktoken
+streamlit_webrtc
