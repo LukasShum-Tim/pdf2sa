@@ -5,4 +5,4 @@ soundfile
 numpy
 googletrans
 tiktoken
-streamlit_webrtc
+git+https://github.com/okld/streamlit-audiorecorder.git
