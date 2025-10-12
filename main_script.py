@@ -6,14 +6,6 @@ from openai import OpenAI
 from googletrans import Translator
 import tempfile
 import soundfile as sf
-import numpy as np
-
-# GitHub-based streamlit-audiorecorder
-try:
-    from streamlit_audiorecorder import audiorecorder
-    AUDIOMODULE_AVAILABLE = True
-except ModuleNotFoundError:
-    AUDIOMODULE_AVAILABLE = False
 
 # ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -39,7 +31,7 @@ language_map = {
 target_language_name = st.selectbox("Translate quiz to:", list(language_map.keys()), index=0)
 target_language_code = language_map[target_language_name]
 
-# ----------------- Translation Helper -----------------
+# Translation helper
 def translate_text(text, target_lang):
     if target_lang == "en":
         return text
@@ -106,6 +98,7 @@ def score_short_answers(user_answers, questions):
     for idx, ans in enumerate(user_answers):
         correct_en = questions[idx]["answer_key_en"]
         correct_translated = questions[idx]["answer_key"]
+        # For simplicity, mark correct if answer matches English key substring-insensitive
         is_correct = correct_en.strip().lower() in ans.strip().lower()
         results.append({
             "question_en": questions[idx]["question_en"],
@@ -155,39 +148,31 @@ if st.session_state.get("questions"):
         st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question']}")
         st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
 
-        # Voice recording if module is available
-        if AUDIOMODULE_AVAILABLE:
-            audio_data = audiorecorder(
-                translate_text("🎤 Start Recording", target_language_code),
-                translate_text("⏹️ Stop Recording", target_language_code)
-            )
+        # Audio file upload for cloud compatibility
+        audio_file = st.file_uploader(
+            translate_text("🎤 Upload your answer as a .wav file (optional)", target_language_code),
+            type=["wav"],
+            key=f"audio_{idx}"
+        )
 
-            user_input = st.text_area(
-                "",
-                key=f"ans_{idx}",
-                placeholder=translate_text("Type your answer here...", target_language_code)
-            )
+        user_input = st.text_area(
+            "",
+            key=f"ans_{idx}",
+            placeholder=translate_text("Type your answer here...", target_language_code)
+        )
 
-            if len(audio_data) > 0:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-                    tmpfile.write(audio_data.tobytes())
-                    audio_path = tmpfile.name
-                st.audio(audio_path, format="audio/wav")
-
-                with open(audio_path, "rb") as f:
-                    transcript = client.audio.transcriptions.create(
-                        model="gpt-4o-mini-transcribe",
-                        file=f
-                    )
-                user_input = transcript.text
-                st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
-        else:
-            # Fallback: only text input
-            user_input = st.text_area(
-                "",
-                key=f"ans_{idx}",
-                placeholder=translate_text("Type your answer here...", target_language_code)
-            )
+        # If audio file uploaded, transcribe with Whisper
+        if audio_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
+                tmpfile.write(audio_file.read())
+                tmpfile_path = tmpfile.name
+            with open(tmpfile_path, "rb") as f:
+                transcript = client.audio.transcriptions.create(
+                    model="gpt-4o-mini-transcribe",
+                    file=f
+                )
+            user_input = transcript.text
+            st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
 
         user_answers.append(user_input)
 
@@ -201,5 +186,4 @@ if st.session_state.get("questions"):
                 st.markdown(f"- 💬 {translate_text('Your Response', target_language_code)}: {r['response']}")
                 st.markdown(f"- {translate_text('Correct?', target_language_code)}: {r['is_correct']}")
                 st.markdown("---")
-
 
