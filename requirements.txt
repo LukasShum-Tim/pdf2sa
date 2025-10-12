@@ -5,4 +5,4 @@ soundfile
 numpy
 googletrans
 tiktoken
-streamlit_audiorecorder
+streamlit-audiorecorder
