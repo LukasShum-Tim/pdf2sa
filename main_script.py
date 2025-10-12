@@ -1,21 +1,19 @@
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
-import openai
 import tempfile
 import sounddevice as sd
 import soundfile as sf
 import numpy as np
-import whisper
+from openai import OpenAI
 from googletrans import Translator
 
-# Initialize models
+# Initialize OpenAI and translator
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 translator = Translator()
-whisper_model = whisper.load_model("base")
 
-st.set_page_config(page_title="PDF to Short Answers with Voice Input", page_icon="🩺")
-
-# --- UI ---
-st.title("🩺 PDF → Short Answer Generator with Voice Input")
+# --- Streamlit page setup ---
+st.set_page_config(page_title="PDF → Short Answer Quiz with Voice Input", page_icon="🩺")
+st.title("🩺 PDF → Short Answer Quiz with Voice Input")
 
 # --- Language Selection ---
 languages = {
@@ -35,39 +33,57 @@ target_lang_name = languages[target_lang]
 # --- PDF Upload ---
 uploaded_file = st.file_uploader("📄 Upload a PDF file / Suba un archivo PDF", type=["pdf"])
 
+
 def extract_pdf_text(file):
-    """Extracts text from uploaded PDF file."""
+    """Extract text from uploaded PDF."""
     doc = fitz.open(stream=file.read(), filetype="pdf")
     text = ""
     for page in doc:
         text += page.get_text("text")
     return text
 
+
 # --- Question Generation ---
 def generate_questions_from_text(pdf_text, lang_code, lang_name):
-    """Generate bilingual short-answer questions using OpenAI."""
+    """Generate short-answer questions (and bilingual versions)."""
     with st.spinner("🧠 Generating questions... / Generando preguntas..."):
-        trimmed_text = pdf_text[:4000]  # Limit for speed; consider chunking for longer PDFs
-        response = openai.chat.completions.create(
+        trimmed_text = pdf_text[:4000]  # Keep first 4000 characters for efficiency
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are an expert medical educator."},
-                {"role": "user", "content": f"Create 3 short-answer questions (with answer keys) based on the following text:\n{trimmed_text}"}
+                {
+                    "role": "user",
+                    "content": (
+                        "Create 3 short-answer questions and their concise model answers "
+                        "based strictly on the text below. Format the output in JSON:\n\n"
+                        '[{"question_en": "...", "answer_key_en": "..."}]\n\n'
+                        f"TEXT:\n{trimmed_text}"
+                    ),
+                },
             ],
         )
-        raw_output = response.choices[0].message.content
-        # Simple mock structure for demo; production version should parse structured format
-        questions = [{"question_en": q.strip(), "answer_key_en": "Expected answer here"} for q in raw_output.split("\n") if q.strip()]
-        
+
+        import json
+
+        try:
+            questions = json.loads(response.choices[0].message.content)
+        except Exception:
+            # Fallback if response not in perfect JSON
+            raw_text = response.choices[0].message.content.strip().split("\n")
+            questions = [{"question_en": q.strip(), "answer_key_en": "Expected answer here"} for q in raw_text if q.strip()]
+
         # Translate each question and answer
         for q in questions:
             q["question_translated"] = translator.translate(q["question_en"], dest=lang_code).text
             q["answer_key_translated"] = translator.translate(q["answer_key_en"], dest=lang_code).text
+
         return questions
 
-# --- Audio Recording + Transcription ---
+
+# --- Audio Recording + Cloud Whisper Transcription ---
 def record_audio(duration=10, samplerate=16000):
-    """Record audio using sounddevice and save to WAV file."""
+    """Record audio and save to temporary WAV."""
     st.info("🎙 Recording... Speak now! / ¡Grabando... hable ahora!")
     audio = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype="float32")
     sd.wait()
@@ -76,21 +92,25 @@ def record_audio(duration=10, samplerate=16000):
         sf.write(tmpfile.name, audio, samplerate)
         return tmpfile.name
 
+
 def transcribe_audio(audio_path):
-    """Transcribe recorded audio with Whisper."""
-    result = whisper_model.transcribe(audio_path)
-    return result["text"].strip()
+    """Transcribe using OpenAI Whisper API."""
+    with open(audio_path, "rb") as f:
+        result = client.audio.transcriptions.create(model="gpt-4o-mini-transcribe", file=f)
+    return result.text.strip()
+
 
 # --- Main Workflow ---
 if uploaded_file:
     pdf_text = extract_pdf_text(uploaded_file)
     st.success("✅ PDF uploaded successfully / PDF subido correctamente")
 
-    if st.button(f"🧠 Generate Questions / Generar preguntas"):
+    if st.button("🧠 Generate Questions / Generar preguntas"):
         questions = generate_questions_from_text(pdf_text, target_lang, target_lang_name)
         st.session_state["questions"] = questions
 
-# --- Display Generated Questions ---
+
+# --- Display Questions ---
 if "questions" in st.session_state:
     questions = st.session_state["questions"]
     st.subheader(f"📘 Questions / Preguntas ({languages[target_lang]})")
@@ -105,9 +125,14 @@ if "questions" in st.session_state:
         st.markdown(f"**Q{i+1}: {q['question_en']}**  \n*{q['question_translated']}*")
 
         key = f"answer_{i}"
-        answer_text = st.text_area(f"📝 Your Answer / Su respuesta ({languages[target_lang]})", key=key)
+        st.session_state["user_answers"].setdefault(key, "")
 
-        # 🎙 Voice input button
+        st.session_state["user_answers"][key] = st.text_area(
+            f"📝 Your Answer / Su respuesta ({languages[target_lang]})",
+            value=st.session_state['user_answers'][key],
+            key=key
+        )
+
         if st.button(f"🎙 Record Answer {i+1} / Grabar respuesta {i+1}"):
             audio_path = record_audio(duration=10)
             transcript = transcribe_audio(audio_path)
@@ -117,8 +142,8 @@ if "questions" in st.session_state:
         st.markdown("---")
         progress_bar.progress((i + 1) / total)
 
-    # Evaluation placeholder (you can link your existing evaluator here)
-    if st.button(f"✅ Evaluate My Answers / Evaluar mis respuestas"):
-        st.info("✨ Evaluation feature under development / Característica de evaluación en desarrollo")
+    # Evaluation placeholder (you can later add AI evaluation)
+    if st.button("✅ Evaluate My Answers / Evaluar mis respuestas"):
+        st.info("✨ Evaluation feature coming soon / Característica de evaluación en desarrollo")
 
 
