@@ -4,5 +4,4 @@ openai
 sounddevice
 soundfile
 numpy
-openai-whisper
-googletrans-py
+googletrans
