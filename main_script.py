@@ -1,147 +1,190 @@
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
-import tempfile
-import sounddevice as sd
-import soundfile as sf
-import numpy as np
+import json
+import tiktoken
 from openai import OpenAI
 from googletrans import Translator
+from audiorecorder import audiorecorder
+import tempfile
+import soundfile as sf
+import numpy as np
 
-# Initialize OpenAI and translator
+# ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 translator = Translator()
 
-# --- Streamlit page setup ---
-st.set_page_config(page_title="PDF → Short Answer Quiz with Voice Input", page_icon="🩺")
-st.title("🩺 PDF → Short Answer Quiz with Voice Input")
+st.set_page_config(page_title="PDF to Short Answer Quiz", layout="centered")
+st.title("📄 PDF to Short Answer Quiz App")
 
-# --- Language Selection ---
-languages = {
-    "en": "English",
-    "es": "Spanish",
-    "fr": "French",
-    "de": "German",
-    "zh-cn": "Chinese (Simplified)",
-    "ar": "Arabic",
-    "hi": "Hindi",
-    "pt": "Portuguese",
-    "ru": "Russian",
+# ----------------- Language Selection -----------------
+st.markdown("### 🌐 Select Quiz Language")
+language_map = {
+    "English": "en",
+    "Spanish": "es",
+    "French": "fr",
+    "Ukrainian": "uk",
+    "Russian": "ru",
+    "German": "de",
+    "Polish": "pl",
+    "Arabic": "ar",
+    "Chinese": "zh-cn",
+    "Hindi": "hi"
 }
-target_lang = st.selectbox("🌍 Select your language / Seleccione su idioma", list(languages.keys()), index=0)
-target_lang_name = languages[target_lang]
+target_language_name = st.selectbox("Translate quiz to:", list(language_map.keys()), index=0)
+target_language_code = language_map[target_language_name]
 
-# --- PDF Upload ---
-uploaded_file = st.file_uploader("📄 Upload a PDF file / Suba un archivo PDF", type=["pdf"])
+# Translation helper
+def translate_text(text, target_lang):
+    if target_lang == "en":
+        return text
+    try:
+        return translator.translate(text, dest=target_lang).text
+    except:
+        return text
 
+# ----------------- PDF Utilities -----------------
+def extract_text_from_pdf(file_obj):
+    doc = fitz.open(stream=file_obj.read(), filetype="pdf")
+    return "\n".join([page.get_text() for page in doc])
 
-def extract_pdf_text(file):
-    """Extract text from uploaded PDF."""
-    doc = fitz.open(stream=file.read(), filetype="pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text("text")
-    return text
+def split_text_into_chunks(text, max_tokens=2500):
+    enc = tiktoken.get_encoding("cl100k_base")
+    words = text.split()
+    chunks, current_chunk = [], []
+    for word in words:
+        current_chunk.append(word)
+        tokens = len(enc.encode(" ".join(current_chunk)))
+        if tokens >= max_tokens:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    return chunks
 
+# ----------------- GPT Short Answer Generation -----------------
+def generate_short_answer_questions(text, total_questions=5):
+    prompt = f"""
+You are a helpful assistant who generates clinically relevant short answer questions
+strictly based on the provided text.
+Make the questions clinically relevant to medical students/residents, Royal College style.
+Do NOT include specific case numbers or vitals.
 
-# --- Question Generation ---
-def generate_questions_from_text(pdf_text, lang_code, lang_name):
-    """Generate short-answer questions (and bilingual versions)."""
-    with st.spinner("🧠 Generating questions... / Generando preguntas..."):
-        trimmed_text = pdf_text[:4000]  # Keep first 4000 characters for efficiency
+Generate exactly {total_questions} questions in JSON format:
+[
+  {{
+    "question": "Question text?",
+    "answer_key": "Expected answer in English."
+  }},
+  ...
+]
+
+Return only valid JSON.
+
+TEXT:
+\"\"\"{text}\"\"\"
+"""
+    try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are an expert medical educator."},
-                {
-                    "role": "user",
-                    "content": (
-                        "Create 3 short-answer questions and their concise model answers "
-                        "based strictly on the text below. Format the output in JSON:\n\n"
-                        '[{"question_en": "...", "answer_key_en": "..."}]\n\n'
-                        f"TEXT:\n{trimmed_text}"
-                    ),
-                },
-            ],
+            model="gpt-4.1-2025-04-14",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7
         )
+        return json.loads(response.choices[0].message.content)
+    except Exception as e:
+        st.warning(f"⚠️ GPT question generation failed: {e}")
+        return []
 
-        import json
+# ----------------- Quiz Evaluation -----------------
+def score_short_answers(user_answers, questions, lang_code):
+    results = []
+    for idx, ans in enumerate(user_answers):
+        correct_en = questions[idx]["answer_key_en"]
+        correct_translated = questions[idx]["answer_key"]
+        # For simplicity, mark correct if answer matches English key substring-insensitive
+        is_correct = correct_en.strip().lower() in ans.strip().lower()
+        results.append({
+            "question_en": questions[idx]["question_en"],
+            "question_translated": questions[idx]["question"],
+            "answer_key_en": correct_en,
+            "answer_key_translated": correct_translated,
+            "response": ans,
+            "is_correct": is_correct
+        })
+    score = sum([r["is_correct"] for r in results])
+    return score, results
 
-        try:
-            questions = json.loads(response.choices[0].message.content)
-        except Exception:
-            # Fallback if response not in perfect JSON
-            raw_text = response.choices[0].message.content.strip().split("\n")
-            questions = [{"question_en": q.strip(), "answer_key_en": "Expected answer here"} for q in raw_text if q.strip()]
-
-        # Translate each question and answer
-        for q in questions:
-            q["question_translated"] = translator.translate(q["question_en"], dest=lang_code).text
-            q["answer_key_translated"] = translator.translate(q["answer_key_en"], dest=lang_code).text
-
-        return questions
-
-
-# --- Audio Recording + Cloud Whisper Transcription ---
-def record_audio(duration=10, samplerate=16000):
-    """Record audio and save to temporary WAV."""
-    st.info("🎙 Recording... Speak now! / ¡Grabando... hable ahora!")
-    audio = sd.rec(int(duration * samplerate), samplerate=samplerate, channels=1, dtype="float32")
-    sd.wait()
-    st.success("✅ Recording complete! / ¡Grabación completa!")
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-        sf.write(tmpfile.name, audio, samplerate)
-        return tmpfile.name
-
-
-def transcribe_audio(audio_path):
-    """Transcribe using OpenAI Whisper API."""
-    with open(audio_path, "rb") as f:
-        result = client.audio.transcriptions.create(model="gpt-4o-mini-transcribe", file=f)
-    return result.text.strip()
-
-
-# --- Main Workflow ---
+# ----------------- PDF Upload -----------------
+uploaded_file = st.file_uploader("📤 Upload your PDF file", type=["pdf"])
 if uploaded_file:
-    pdf_text = extract_pdf_text(uploaded_file)
-    st.success("✅ PDF uploaded successfully / PDF subido correctamente")
+    st.success("✅ PDF uploaded successfully.")
+    pdf_text = extract_text_from_pdf(uploaded_file)
+    st.session_state["pdf_text"] = pdf_text
+    with st.expander("🔍 Preview Extracted Text"):
+        st.text_area("Extracted Text", pdf_text[:1000] + "...", height=300)
 
-    if st.button("🧠 Generate Questions / Generar preguntas"):
-        questions = generate_questions_from_text(pdf_text, target_lang, target_lang_name)
-        st.session_state["questions"] = questions
+    total_questions = st.slider("🔢 Number of questions", 1, 20, 5)
 
+    if st.button("🧠 Generate Questions"):
+        chunks = split_text_into_chunks(pdf_text)
+        first_chunk = chunks[0] if chunks else pdf_text
+        with st.spinner("Generating questions..."):
+            questions = generate_short_answer_questions(first_chunk, total_questions)
+        if questions:
+            # Add English translations for evaluation
+            for q in questions:
+                q["question_en"] = translate_text(q["question"], "en")
+                q["answer_key_en"] = translate_text(q["answer_key"], "en")
+            st.session_state["questions"] = questions
+        else:
+            st.error("❌ No questions generated.")
 
-# --- Display Questions ---
-if "questions" in st.session_state:
+# ----------------- Quiz Form -----------------
+if st.session_state.get("questions"):
     questions = st.session_state["questions"]
-    st.subheader(f"📘 Questions / Preguntas ({languages[target_lang]})")
+    user_answers = []
 
-    if "user_answers" not in st.session_state:
-        st.session_state["user_answers"] = {}
+    st.header("📝 Take the Quiz")
+    st.write(translate_text("Answer the following questions:", target_language_code))
 
-    progress_bar = st.progress(0)
-    total = len(questions)
+    for idx, q in enumerate(questions):
+        st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question']}")
+        st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
 
-    for i, q in enumerate(questions):
-        st.markdown(f"**Q{i+1}: {q['question_en']}**  \n*{q['question_translated']}*")
-
-        key = f"answer_{i}"
-        st.session_state["user_answers"].setdefault(key, "")
-
-        st.session_state["user_answers"][key] = st.text_area(
-            f"📝 Your Answer / Su respuesta ({languages[target_lang]})",
-            value=st.session_state['user_answers'][key],
-            key=key
+        # Voice recording
+        audio_data = audiorecorder(
+            translate_text("🎤 Start Recording", target_language_code),
+            translate_text("⏹️ Stop Recording", target_language_code)
         )
 
-        if st.button(f"🎙 Record Answer {i+1} / Grabar respuesta {i+1}"):
-            audio_path = record_audio(duration=10)
-            transcript = transcribe_audio(audio_path)
-            st.session_state["user_answers"][key] = transcript
-            st.success(f"🗣 Transcribed: {transcript}")
+        user_input = st.text_area(
+            "",
+            key=f"ans_{idx}",
+            placeholder=translate_text("Type your answer here...", target_language_code)
+        )
 
-        st.markdown("---")
-        progress_bar.progress((i + 1) / total)
+        if len(audio_data) > 0:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
+                sf.write(tmpfile.name, audio_data.tobytes(), samplerate=44100, subtype='PCM_16')
+                audio_path = tmpfile.name
+            st.audio(audio_path, format="audio/wav")
+            with open(audio_path, "rb") as f:
+                transcript = client.audio.transcriptions.create(
+                    model="gpt-4o-mini-transcribe",
+                    file=f
+                )
+            user_input = transcript.text
+            st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
 
-    # Evaluation placeholder (you can later add AI evaluation)
-    if st.button("✅ Evaluate My Answers / Evaluar mis respuestas"):
-        st.info("✨ Evaluation feature coming soon / Característica de evaluación en desarrollo")
+        user_answers.append(user_input)
+
+    if st.button(translate_text("✅ Evaluate My Answers", target_language_code)):
+        score, results = score_short_answers(user_answers, questions, target_language_code)
+        st.success(f"🎯 {translate_text('Your score', target_language_code)}: {score} / {len(results)}")
+        with st.expander(translate_text("📊 Detailed Feedback", target_language_code)):
+            for i, r in enumerate(results):
+                st.markdown(f"**Q{i+1}: {r['question_en']} / {r['question_translated']}**")
+                st.markdown(f"- ✅ {translate_text('Correct Answer', target_language_code)}: {r['answer_key_en']} / {r['answer_key_translated']}")
+                st.markdown(f"- 💬 {translate_text('Your Response', target_language_code)}: {r['response']}")
+                st.markdown(f"- {translate_text('Correct?', target_language_code)}: {r['is_correct']}")
+                st.markdown("---")
+
