@@ -1,6 +1,6 @@
 import streamlit as st
 import json
-import pymupdf fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 from openai import OpenAI
 from googletrans import Translator
 import time
