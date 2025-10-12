@@ -3,3 +3,7 @@ pymupdf
 openai
 tiktoken
 googletrans
+pyaudio
+whisper
+sounddevice
+numpy
