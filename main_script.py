@@ -3,7 +3,7 @@ import pymupdf as fitz  # PyMuPDF
 import json
 from openai import OpenAI
 from googletrans import Translator
-from streamlit-audiorecorder import audiorecorder
+from audiorecorder import audiorecorder
 import tempfile
 
 # ----------------- Config -----------------
