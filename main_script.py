@@ -1,155 +1,98 @@
 import streamlit as st
-from googletrans import Translator
-import pymupdf as fitz  # PyMuPDF
-import openai
-import json
-import tempfile
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chains import ConversationalRetrievalChain
+from langchain.chat_models import ChatOpenAI
+from deep_translator import GoogleTranslator
+from gtts import gTTS
+from io import BytesIO
+import os
 
-# -------------------- CONFIG -------------------- #
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# ---------------------------
+# Streamlit UI
+# ---------------------------
+st.set_page_config(page_title="PDF to QA", layout="wide")
+st.title("PDF to Conversational AI")
 
-st.set_page_config(page_title="PDF Q&A Generator", layout="wide")
+uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
+target_language = st.selectbox("Translate answers to:", ["en", "fr", "de", "es", "it", "pt"])
 
-translator = Translator()
-
-# -------------------- HELPER FUNCTIONS -------------------- #
-
-def translate_text(text, target_lang):
-    if target_lang.lower() == "en":
-        return text
-    try:
-        return translator.translate(text, dest=target_lang.lower()).text
-    except Exception as e:
-        st.warning(f"Translation failed: {e}")
-        return text
-
-def extract_text_from_pdf(pdf_file):
-    doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+if uploaded_file:
+    # ---------------------------
+    # Read PDF
+    # ---------------------------
+    pdf_reader = PdfReader(uploaded_file)
     text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
+    for page in pdf_reader.pages:
+        text += page.extract_text()
 
-def generate_questions(pdf_text, num_questions, target_lang="en"):
-    prompt = f"""
-    Generate {num_questions} questions and model answers from the following text.
-    Output strictly valid JSON in this format ONLY:
-
-    {{
-        "questions": [
-            {{
-                "question": "Question text",
-                "answer": "Answer text"
-            }}
-        ]
-    }}
-
-    Text:
-    {pdf_text}
-    """
-    response = openai.chat.completions.create(
-        model="gpt-4-1106-preview",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.5
+    # ---------------------------
+    # Text Splitting
+    # ---------------------------
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=100
     )
-    raw_text = response.choices[0].message.content.strip()
+    chunks = text_splitter.split_text(text)
 
-    # Strip extra text outside JSON
-    start = raw_text.find("{")
-    end = raw_text.rfind("}") + 1
-    json_text = raw_text[start:end]
+    # ---------------------------
+    # Embeddings & Vectorstore
+    # ---------------------------
+    embeddings = OpenAIEmbeddings()
+    vectorstore = FAISS.from_texts(chunks, embeddings)
 
-    try:
-        data = json.loads(json_text)
-    except Exception as e:
-        st.error(f"Failed to parse questions JSON: {e}\nRaw response:\n{raw_text}")
-        return []
-
-    # Translate questions and answers
-    for q in data["questions"]:
-        q["question_local"] = translate_text(q["question"], target_lang)
-        q["answer_local"] = translate_text(q["answer"], target_lang)
-
-    return data["questions"]
-
-def evaluate_answer(user_answer, correct_answer):
-    prompt = f"""
-    Evaluate the user's answer against the correct answer.
-    User Answer: {user_answer}
-    Correct Answer: {correct_answer}
-    Provide a short evaluation and indicate correctness (Correct/Incorrect).
-    """
-    response = openai.chat.completions.create(
-        model="gpt-4-1106-preview",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0
+    # ---------------------------
+    # Conversational Retrieval
+    # ---------------------------
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    qa_chain = ConversationalRetrievalChain.from_llm(
+        ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo"),
+        retriever=retriever
     )
-    return response.choices[0].message.content.strip()
 
-def transcribe_audio(audio_bytes):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = []
 
-    with open(tmp_path, "rb") as f:
-        transcript = openai.audio.transcriptions.create(
-            file=f,
-            model="whisper-1"
-        )
-    return transcript["text"]
+    # ---------------------------
+    # User Input
+    # ---------------------------
+    user_question = st.text_input("Ask a question about your PDF:")
+    if user_question:
+        result = qa_chain({"question": user_question, "chat_history": st.session_state.conversation})
+        answer = result["answer"]
 
-# -------------------- UI -------------------- #
+        # ---------------------------
+        # Translate Answer
+        # ---------------------------
+        if target_language != "en":
+            try:
+                answer_translated = GoogleTranslator(source='auto', target=target_language).translate(answer)
+            except Exception as e:
+                st.error(f"Translation failed: {e}")
+                answer_translated = answer
+        else:
+            answer_translated = answer
 
-st.title("PDF Question Generator & Evaluator")
+        # ---------------------------
+        # Display
+        # ---------------------------
+        st.write("**Answer:**")
+        st.write(answer_translated)
 
-languages = ["en", "fr", "es", "de", "it", "pt"]
-selected_lang = st.selectbox("Select your language / Sélectionnez votre langue", languages, index=0)
+        # ---------------------------
+        # Text-to-Speech
+        # ---------------------------
+        tts = gTTS(text=answer_translated, lang=target_language)
+        mp3_fp = BytesIO()
+        tts.write_to_fp(mp3_fp)
+        mp3_fp.seek(0)
+        st.audio(mp3_fp, format="audio/mp3")
 
-uploaded_pdf = st.file_uploader(
-    translate_text("Upload your PDF file / Téléversez votre fichier PDF", selected_lang),
-    type="pdf"
-)
+        # ---------------------------
+        # Update Conversation
+        # ---------------------------
+        st.session_state.conversation.append((user_question, answer_translated))
 
-num_questions = st.number_input(
-    translate_text("Number of questions / Nombre de questions", selected_lang),
-    min_value=1, max_value=10, value=1
-)
-
-if uploaded_pdf:
-    pdf_text = extract_text_from_pdf(uploaded_pdf)
-
-    if st.button(translate_text("Generate Questions / Générer des questions", selected_lang)):
-        questions = generate_questions(pdf_text, num_questions, selected_lang)
-        if questions:
-            st.session_state['questions'] = questions
-
-if 'questions' in st.session_state:
-    for idx, q in enumerate(st.session_state['questions']):
-        st.markdown(f"**Q{idx+1} (EN):** {q['question']}")
-        st.markdown(f"**Q{idx+1} ({selected_lang.upper()}):** {q['question_local']}")
-
-        audio_input = st.audio_input(
-            f"Record your answer / Enregistrez votre réponse (Q{idx+1})",
-            key=f"audio_{idx}"
-        )
-
-        if f"answer_{idx}" not in st.session_state:
-            st.session_state[f"answer_{idx}"] = ""
-
-        if audio_input:
-            st.session_state[f"answer_{idx}"] = transcribe_audio(audio_input.read())
-
-        user_answer = st.text_area(
-            f"Your Answer / Votre réponse (Q{idx+1})",
-            value=st.session_state[f"answer_{idx}"],
-            key=f"answer_area_{idx}"
-        )
-
-        if st.button(translate_text("Evaluate Answer / Évaluer la réponse", selected_lang), key=f"eval_{idx}"):
-            evaluation_en = evaluate_answer(user_answer, q['answer'])
-            evaluation_local = translate_text(evaluation_en, selected_lang)
-            st.markdown(f"**Evaluation (EN):** {evaluation_en}")
-            st.markdown(f"**Evaluation ({selected_lang.upper()}):** {evaluation_local}")
-            st.markdown(f"**Correct Answer (EN):** {q['answer']}")
-            st.markdown(f"**Correct Answer ({selected_lang.upper()}):** {q['answer_local']}")
 
