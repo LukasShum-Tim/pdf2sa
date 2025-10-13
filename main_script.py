@@ -46,7 +46,7 @@ if uploaded_pdf:
 
     # --- Generate Questions ---
     if st.button(translate("Generate Questions / Générer des questions")):
-        llm = ChatOpenAI(model_name="gpt-4", temperature=0.5)
+        llm = ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0.5)
         prompt_template = """You are a medical educator. Based on the following text, generate {num_questions} clear, concise questions suitable for trainee assessment. 
         Text: {text}"""
         prompt = PromptTemplate(input_variables=["text", "num_questions"], template=prompt_template)
