@@ -11,20 +11,6 @@ import time
 client = OpenAI()
 translator = Translator()
 
-st.title('Counter Example')
-if 'count' not in st.session_state:
-    st.session_state.count = 0
-
-increment = st.button('Increment')
-if increment:
-    st.session_state.count += 1
-
-st.write('Count = ', st.session_state.count)
-
-# Session State also supports the attribute based syntax
-if 'key' not in st.session_state:
-    st.session_state.key = 'value'
-
 st.set_page_config(
     page_title="📘 Multilingual Short-Answer Trainer",
     page_icon="🧠",
@@ -33,6 +19,18 @@ st.set_page_config(
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
 st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
+
+# -------------------------------
+# SESSION STATE INITIALIZATION
+# -------------------------------
+if "questions" not in st.session_state:
+    st.session_state["questions"] = []
+
+if "user_answers" not in st.session_state:
+    st.session_state["user_answers"] = []
+
+if "evaluations" not in st.session_state:
+    st.session_state["evaluations"] = []
 
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
@@ -165,7 +163,7 @@ SOURCE TEXT:
 # -------------------------------
 # USER ANSWERS
 # -------------------------------
-if "questions" in st.session_state:
+if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
@@ -219,6 +217,7 @@ QUESTIONS AND RESPONSES:
     if st.button(bilingual_text("🚀 Evaluate My Answers")):
         with st.spinner(bilingual_text("Evaluating your answers...")):
             results = score_short_answers(user_answers, questions)
+            st.session_state['evaluations'] = results  # store evaluations safely
         if results:
             st.success(bilingual_text("✅ Evaluation complete!"))
             with st.expander(bilingual_text("📊 Detailed Feedback")):
@@ -231,10 +230,3 @@ QUESTIONS AND RESPONSES:
                     st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                     st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                     st.markdown("---")
-
-# --- Display evaluations ---
-for i, evaluation in enumerate(st.session_state['evaluations']):
-    if evaluation:
-        st.markdown(f"**Evaluation {i+1}:** {evaluation}")
-
-
