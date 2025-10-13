@@ -1,158 +1,100 @@
 import streamlit as st
-from openai import OpenAI
-import tempfile
+from io import BytesIO
 import pymupdf as fitz  # PyMuPDF
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+import openai
+from gtts import gTTS
+from tempfile import NamedTemporaryFile
+import os
+from pydub import AudioSegment
+import tempfile
 
-# -------------------------------------------------------
-# APP CONFIG
-# -------------------------------------------------------
-st.set_page_config(page_title="AI Oral Board Trainer", layout="wide")
-st.title("🎙️ AI Oral Board Trainer")
-st.write("Upload a PDF to generate bilingual oral board questions and record your answers for automated feedback.")
+# --- Streamlit Page Configuration ---
+st.set_page_config(page_title="Trauma Quiz Generator", layout="wide")
 
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# --- Sidebar ---
+st.sidebar.header("Settings")
+num_questions = st.sidebar.number_input("Number of questions:", min_value=1, max_value=20, value=5, step=1)
+language = st.sidebar.selectbox("Select language:", ["English", "French", "Spanish", "German", "Other"])
 
-# -------------------------------------------------------
-# LANGUAGE SELECTION
-# -------------------------------------------------------
-LANGUAGES = [
-    "English", "French", "Spanish", "German", "Arabic", "Chinese", "Portuguese"
-]
-user_language = st.selectbox("🌐 Select your language", options=LANGUAGES, index=0)
+# --- PDF Upload ---
+st.header("Upload ATLS PDF Manual")
+uploaded_file = st.file_uploader("Upload PDF", type="pdf")
 
-# -------------------------------------------------------
-# TRANSLATION
-# -------------------------------------------------------
-def translate_text(text, target_language):
-    if target_language == "English":
-        return text
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": f"Translate the following text into {target_language}."},
-            {"role": "user", "content": text},
-        ],
-    )
-    return response.choices[0].message.content.strip()
-
-# -------------------------------------------------------
-# PDF TEXT EXTRACTION
-# -------------------------------------------------------
-def extract_text_from_pdf(pdf_file):
-    text = ""
-    with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
+pdf_text = ""
+if uploaded_file is not None:
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
         for page in doc:
-            text += page.get_text()
-    return text[:6000]  # Limit to manageable length
+            pdf_text += page.get_text()
+    st.success("PDF successfully loaded!")
 
-# -------------------------------------------------------
-# QUESTION GENERATION
-# -------------------------------------------------------
-def generate_questions(pdf_text, target_language):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a bilingual trauma surgery educator. Create 5 short-answer oral board questions and their ideal answers."},
-            {"role": "user", "content": pdf_text},
-        ],
-    )
-    english_output = response.choices[0].message.content.strip()
-    translated_output = translate_text(english_output, target_language)
-    return english_output, translated_output
+# --- Generate Questions ---
+st.header("Generated Questions")
+generate_button = st.button("Generate Questions")
 
-# -------------------------------------------------------
-# AUDIO TRANSCRIPTION (new OpenAI API syntax)
-# -------------------------------------------------------
-def transcribe_audio(audio_bytes):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(audio_bytes)
-        tmp.flush()
-        with open(tmp.name, "rb") as f:
-            transcript = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
-                file=f
-            )
-    return transcript.text.strip()
+if generate_button:
+    if not uploaded_file:
+        st.warning("Please upload a PDF first.")
+    else:
+        # --- LLM Prompt ---
+        llm = ChatOpenAI(model_name="gpt-4", temperature=0.5)
+        prompt = PromptTemplate(
+            input_variables=["text", "num_questions", "language"],
+            template="""You are a trauma educator. 
+Using the following text from a trauma manual, generate {num_questions} clinically relevant multiple-choice questions. 
+Provide the question only, do NOT include answers yet. Translate into {language} if not English.
+Text: {text}"""
+        )
+        chain = LLMChain(llm=llm, prompt=prompt)
+        questions_text = chain.run(text=pdf_text, num_questions=num_questions, language=language)
 
-# -------------------------------------------------------
-# ANSWER EVALUATION (partial credit, bilingual)
-# -------------------------------------------------------
-def evaluate_answer(question, expected_answer, user_answer, language):
-    prompt = f"""
-You are an experienced trauma examiner fluent in {language}.
-Evaluate the following answer. Give partial credit when appropriate.
+        # Split questions by line breaks
+        questions_list = [q.strip() for q in questions_text.split("\n") if q.strip()]
+        
+        # --- Display Questions with Response Boxes ---
+        user_answers = {}
+        for idx, question in enumerate(questions_list):
+            st.markdown(f"**Q{idx+1}: {question}**")
+            user_answers[idx] = st.text_area(f"Your answer for Q{idx+1}", key=f"answer_{idx}")
+            
+            # --- Audio Recording ---
+            audio_file = st.audio_input(f"Record your answer for Q{idx+1} (will transcribe)", key=f"audio_{idx}")
+            if audio_file:
+                # Save temporarily
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+                    tmp.write(audio_file.read())
+                    tmp_path = tmp.name
+
+                # Transcribe using OpenAI
+                transcription = openai.audio.transcriptions.create(
+                    model="gpt-4o-mini-transcribe",
+                    file=open(tmp_path, "rb"),
+                    language=language if language != "English" else "en"
+                )
+                st.markdown(f"**Transcription:** {transcription.text}")
+                user_answers[idx] = transcription.text
+                os.unlink(tmp_path)
+
+        # --- Evaluate Answers ---
+        evaluate_button = st.button("Evaluate Answers")
+        if evaluate_button:
+            for idx, question in enumerate(questions_list):
+                prompt_eval = PromptTemplate(
+                    input_variables=["question", "user_answer", "text", "language"],
+                    template="""You are a trauma educator. The following is a question and a student answer.
+Evaluate if the answer is correct based on the text provided. Provide a concise evaluation in {language}.
 
 Question: {question}
-Expected answer: {expected_answer}
-User's answer: {user_answer}
-
-Return in {language}:
-1. A numeric score out of 10 (allow partial credit)
-2. A short paragraph of feedback
-3. One sentence describing what was missing
-"""
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content.strip()
-
-# -------------------------------------------------------
-# MAIN APP
-# -------------------------------------------------------
-st.markdown("### 📘 Upload a PDF to Generate Questions")
-uploaded_pdf = st.file_uploader("Upload your source PDF file", type=["pdf"])
-
-if uploaded_pdf:
-    with st.spinner("📄 Reading your PDF and generating questions..."):
-        pdf_text = extract_text_from_pdf(uploaded_pdf)
-        q_en, q_translated = generate_questions(pdf_text, user_language)
-    st.success("✅ Questions generated!")
-
-    st.markdown("### 🧾 Generated Questions")
-    st.markdown(f"**English:**\n\n{q_en}")
-    st.markdown(f"**{user_language}:**\n\n{q_translated}")
-    st.divider()
-
-    # Split questions and answers into pairs (rough heuristic)
-    question_blocks = [q for q in q_en.split("\n") if q.strip()][:5]
-
-    st.markdown(f"### 🩺 Practice ({user_language})")
-
-    for i, question_text in enumerate(question_blocks, 1):
-        translated_q = translate_text(question_text, user_language)
-        st.markdown(f"#### Question {i}:")
-        st.info(f"{translated_q}")
-
-        # Audio input for each question
-        st.markdown(f"🎙️ Record or upload your answer ({user_language})")
-        audio_file = st.audio_input(f"Record answer for Question {i}")
-
-        user_transcript = ""
-        if audio_file:
-            audio_bytes = audio_file.read()
-            with st.spinner(f"🎧 Transcribing your answer for Question {i}..."):
-                try:
-                    user_transcript = transcribe_audio(audio_bytes)
-                    user_transcript = translate_text(user_transcript, user_language)
-                    st.success(f"✅ Audio transcribed for Question {i}")
-                except Exception as e:
-                    st.error(f"Transcription failed: {e}")
-
-        # Textbox for editing or typing the answer
-        user_answer = st.text_area(
-            f"✍️ Your answer in {user_language} (Question {i}):",
-            value=user_transcript,
-            height=150,
-        )
-
-        # Evaluate button for each question
-        if st.button(f"🧠 Evaluate Question {i}"):
-            if not user_answer.strip():
-                st.warning("Please provide an answer before evaluation.")
-            else:
-                with st.spinner("Evaluating your answer..."):
-                    feedback = evaluate_answer(translated_q, "Provide evidence-based trauma management.", user_answer, user_language)
-                st.markdown("**🧾 Feedback:**")
-                st.write(feedback)
-        st.divider()
+Student Answer: {user_answer}
+Reference Text: {text}"""
+                )
+                eval_chain = LLMChain(llm=llm, prompt=prompt_eval)
+                result = eval_chain.run(
+                    question=question, 
+                    user_answer=user_answers[idx], 
+                    text=pdf_text,
+                    language=language
+                )
+                st.markdown(f"**Evaluation for Q{idx+1}:** {result}")
