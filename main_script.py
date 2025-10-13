@@ -5,6 +5,7 @@ from openai import OpenAI
 from googletrans import Translator
 import io
 import time
+import tempfile
 
 # -------------------------------
 # INITIALIZATION
@@ -162,7 +163,7 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH CORRECT AUDIO HANDLING
+# USER ANSWERS WITH FIXED AUDIO HANDLING
 # -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
@@ -180,14 +181,19 @@ if st.session_state["questions"]:
         # Transcribe audio using Whisper if audio is provided
         if audio_data is not None:
             try:
-                # Read UploadedFile contents for Whisper
-                audio_bytes_io = io.BytesIO(audio_data.read())
-                
-                transcription = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_bytes_io
-                )
+                # Save UploadedFile contents to a temporary .webm file
+                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_file:
+                    tmp_file.write(audio_data.read())
+                    tmp_file_path = tmp_file.name
+
+                # Send to Whisper with correct file format
+                with open(tmp_file_path, "rb") as f:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=f
+                    )
                 user_answers[i] = transcription.text
+
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
@@ -250,3 +256,4 @@ QUESTIONS AND RESPONSES:
                     st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                     st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                     st.markdown("---")
+
