@@ -3,8 +3,8 @@ import json
 import pymupdf as fitz  # PyMuPDF
 from openai import OpenAI
 from googletrans import Translator
+import io
 import time
-from io import BytesIO
 
 # -------------------------------
 # INITIALIZATION
@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
-st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, record voice if desired, and get bilingual feedback.")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
 
 # -------------------------------
 # SESSION STATE INITIALIZATION
@@ -38,6 +38,7 @@ if "evaluations" not in st.session_state:
 # -------------------------------
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_code):
+    """Translate text safely with fallback to GPT."""
     if not text or not text.strip():
         return text
     try:
@@ -77,6 +78,7 @@ target_language_name = st.selectbox("🌍 Select your language:", list(language_
 target_lang_code = language_map[target_language_name]
 
 def bilingual_text(en_text):
+    """Display English + Translated text together."""
     translated = safe_translate(en_text, target_lang_code)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
@@ -108,6 +110,7 @@ if pdf_text:
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
+        # Limit text size for speed
         trimmed_text = pdf_text[:4000]
         time.sleep(0.2)
         progress.progress(10, text=bilingual_text("Preparing content..."))
@@ -159,10 +162,10 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH AUDIO INPUT
+# USER ANSWERS WITH AUDIO DICTATION
 # -------------------------------
 if st.session_state["questions"]:
-    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions (Type or Speak)"))
+    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
     user_answers = st.session_state.get("user_answers", [""] * len(questions))
@@ -170,35 +173,33 @@ if st.session_state["questions"]:
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
-
-        # Text input
-        user_answers[i] = st.text_area(
-            bilingual_text("✏️ Your Answer:"), 
-            value=user_answers[i], height=80, key=f"ans_{i}"
-        )
-
-        # Audio input using st.audio_input
-        st.markdown("**🎤 Record your answer (optional):**")
-        audio_data = st.audio_input(key=f"audio_{i}")  # Returns BytesIO
-
+        
+        # Audio input
+        audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
+        
+        # Transcribe audio using Whisper if audio is provided
         if audio_data is not None:
+            audio_bytes = io.BytesIO(audio_data)  # Convert to BytesIO
             try:
-                transcript = client.audio.transcriptions.create(
+                transcription = client.audio.transcriptions.create(
                     model="whisper-1",
-                    file=audio_data
+                    file=audio_bytes
                 )
-                user_answers[i] = transcript.text  # Populate text area
-                st.success(bilingual_text("🎤 Voice transcribed to text!"))
+                user_answers[i] = transcription.text
             except Exception as e:
-                st.error(bilingual_text(f"⚠️ Voice transcription failed: {e}"))
+                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+
+        # Text area (pre-filled with typed or transcribed text)
+        label = bilingual_text("✏️ Your Answer:")
+        user_answers[i] = st.text_area(label, value=user_answers[i], height=80, key=f"ans_{i}")
 
     st.session_state["user_answers"] = user_answers
 
-# -------------------------------
-# EVALUATION (UNCHANGED)
-# -------------------------------
-def score_short_answers(user_answers, questions):
-    grading_prompt = f"""
+    # -------------------------------
+    # EVALUATION
+    # -------------------------------
+    def score_short_answers(user_answers, questions):
+        grading_prompt = f"""
 You are an examiner. Score each short-answer response on a 0–2 scale.
 Return ONLY JSON:
 [
@@ -216,36 +217,34 @@ QUESTIONS AND RESPONSES:
     for q, a in zip(questions, user_answers)
 ], indent=2)}
 """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": grading_prompt}],
-            temperature=0
-        )
-        results = json.loads(response.choices[0].message.content)
-        for r in results:
-            r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
-            r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
-        return results
-    except Exception as e:
-        st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
-        return []
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": grading_prompt}],
+                temperature=0
+            )
+            results = json.loads(response.choices[0].message.content)
+            for r in results:
+                r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
+                r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
+            return results
+        except Exception as e:
+            st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
+            return []
 
-if st.button(bilingual_text("🚀 Evaluate My Answers")):
-    with st.spinner(bilingual_text("Evaluating your answers...")):
-        results = score_short_answers(user_answers, questions)
-        st.session_state['evaluations'] = results
-    if results:
-        st.success(bilingual_text("✅ Evaluation complete!"))
-        with st.expander(bilingual_text("📊 Detailed Feedback")):
-            for i, (q, r) in enumerate(zip(questions, results)):
-                st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
-                st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
-                st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
-                st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
-                st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
-                st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
-                st.markdown(f"**Model Answer ({target_language_name}): {r.get('model_answer_translated', '')}**")
-                st.markdown("---")
-
-
+    if st.button(bilingual_text("🚀 Evaluate My Answers")):
+        with st.spinner(bilingual_text("Evaluating your answers...")):
+            results = score_short_answers(user_answers, questions)
+            st.session_state['evaluations'] = results  # store evaluations safely
+        if results:
+            st.success(bilingual_text("✅ Evaluation complete!"))
+            with st.expander(bilingual_text("📊 Detailed Feedback")):
+                for i, (q, r) in enumerate(zip(questions, results)):
+                    st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
+                    st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
+                    st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                    st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
+                    st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
+                    st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
+                    st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
+                    st.markdown("---")
