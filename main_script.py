@@ -13,7 +13,7 @@ import re
 # -------------------------------
 # INITIALIZATION
 # -------------------------------
-client = OpenAI()
+client = openai.OpenAI(st.secrets["OPENAI_API_KEY"])
 translator = Translator()
 
 st.set_page_config(
@@ -87,23 +87,95 @@ language_map = {
     'Chichewa': 'ny',
     'Chinese (Simplified)': 'zh-cn',
     'Chinese (Traditional)': 'zh-tw',
+    'Corsican': 'co',
     'Croatian': 'hr',
     'Czech': 'cs',
     'Danish': 'da',
     'Dutch': 'nl',
+    'Esperanto': 'eo',
+    'Estonian': 'et',
+    'Filipino': 'tl',
+    'Finnish': 'fi',
     'French': 'fr',
+    'Frisian': 'fy',
+    'Galician': 'gl',
+    'Georgian': 'ka',
     'German': 'de',
     'Greek': 'el',
+    'Gujarati': 'gu',
+    'Haitian Creole': 'ht',
+    'Hausa': 'ha',
+    'Hawaiian': 'haw',
+    'Hebrew': 'he',
     'Hindi': 'hi',
+    'Hmong': 'hmn',
+    'Hungarian': 'hu',
+    'Icelandic': 'is',
+    'Igbo': 'ig',
+    'Indonesian': 'id',
+    'Irish': 'ga',
     'Italian': 'it',
     'Japanese': 'ja',
+    'Javanese': 'jw',
+    'Kannada': 'kn',
+    'Kazakh': 'kk',
+    'Khmer': 'km',
     'Korean': 'ko',
+    'Kurdish (Kurmanji)': 'ku',
+    'Kyrgyz': 'ky',
+    'Lao': 'lo',
+    'Latin': 'la',
+    'Latvian': 'lv',
+    'Lithuanian': 'lt',
+    'Luxembourgish': 'lb',
+    'Macedonian': 'mk',
+    'Malagasy': 'mg',
+    'Malay': 'ms',
+    'Malayalam': 'ml',
+    'Maltese': 'mt',
+    'Maori': 'mi',
+    'Marathi': 'mr',
+    'Mongolian': 'mn',
+    'Myanmar (Burmese)': 'my',
+    'Nepali': 'ne',
+    'Norwegian': 'no',
+    'Odia': 'or',
+    'Pashto': 'ps',
+    'Persian': 'fa',
+    'Polish': 'pl',
     'Portuguese': 'pt',
+    'Punjabi': 'pa',
+    'Romanian': 'ro',
     'Russian': 'ru',
+    'Samoan': 'sm',
+    'Scots Gaelic': 'gd',
+    'Serbian': 'sr',
+    'Sesotho': 'st',
+    'Shona': 'sn',
+    'Sindhi': 'sd',
+    'Sinhala': 'si',
+    'Slovak': 'sk',
+    'Slovenian': 'sl',
+    'Somali': 'so',
     'Spanish': 'es',
+    'Sundanese': 'su',
+    'Swahili': 'sw',
     'Swedish': 'sv',
+    'Tajik': 'tg',
+    'Tamil': 'ta',
+    'Telugu': 'te',
+    'Thai': 'th',
     'Turkish': 'tr',
-    'Vietnamese': 'vi'
+    'Ukrainian': 'uk',
+    'Urdu': 'ur',
+    'Uyghur': 'ug',
+    'Uzbek': 'uz',
+    'Vietnamese': 'vi',
+    'Welsh': 'cy',
+    'Xhosa': 'xh',
+    'Yiddish': 'yi',
+    'Yoruba': 'yo',
+    'Zulu': 'zu',
 }
 
 target_language_name = st.selectbox("🌍 Select your language:", list(language_map.keys()), index=0)
@@ -166,7 +238,7 @@ SOURCE TEXT:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",  # ✅ lighter, faster model
+                model="gpt-4.1-2025-04-14", 
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7
             )
@@ -270,7 +342,7 @@ if st.session_state["questions"]:
     # -------------------------------
     def score_short_answers(user_answers, questions):
         grading_prompt = f"""
-You are a Royal College of Physicians and Surgeons oral boards examiner. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
+You are a Royal College of Physicians and Surgeons oral boards examiner. You are examining the chief residents' answers to oral board exam questions. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
 Return ONLY JSON:
 [
   {{
