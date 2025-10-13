@@ -1,199 +1,324 @@
+# main_script.py
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
 import json
-import tiktoken
+import tempfile
+import os
+from typing import List, Dict, Any
+
+# Local audiorecorder (you added the folder to the repo)
+from audiorecorder import audiorecorder
+
+# OpenAI client (ensure OPENAI_API_KEY in Streamlit secrets)
 from openai import OpenAI
 from googletrans import Translator
-import tempfile
-import soundfile as sf
-import numpy as np
 
-# Cloud-compatible audio recorder
-from audiorecorder import audiorecorder  
+# ----------------------------
+# Config / Initialization
+# ----------------------------
+st.set_page_config(page_title="📄 PDF → Short Answer Trainer", layout="wide")
+st.title("📄 PDF → Short Answer Trainer (Bilingual + Voice)")
 
-# ----------------- Config -----------------
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 translator = Translator()
 
-st.set_page_config(page_title="📄 PDF to Short Answer Quiz", layout="centered")
-st.title("📄 PDF to Short Answer Quiz App")
-
-# ----------------- Language Selection -----------------
-st.markdown("### 🌐 Select Quiz Language")
-language_map = {
+# Language map shown to user (display name -> code)
+LANG_MAP = {
     "English": "en",
-    "Spanish": "es",
     "French": "fr",
-    "Ukrainian": "uk",
-    "Russian": "ru",
+    "Spanish": "es",
+    "Portuguese": "pt",
     "German": "de",
-    "Polish": "pl",
+    "Italian": "it",
+    "Japanese": "ja",
+    "Korean": "ko",
     "Arabic": "ar",
-    "Chinese": "zh-cn",
-    "Hindi": "hi"
+    "Chinese (Simplified)": "zh-cn",
+    "Hindi": "hi",
 }
-target_language_name = st.selectbox("Translate quiz to:", list(language_map.keys()), index=0)
-target_language_code = language_map[target_language_name]
 
-# ----------------- Translation Helper -----------------
-def translate_text(text, target_lang):
-    if target_lang == "en":
+# ----------------------------
+# Helpers: translation + safe wrappers
+# ----------------------------
+@st.cache_data(show_spinner=False)
+def cached_translate(text: str, target_lang_code: str) -> str:
+    """Translate using googletrans with caching and fail-safe fallback to original text."""
+    if not text:
+        return text
+    if target_lang_code == "en":
         return text
     try:
-        return translator.translate(text, dest=target_lang).text
-    except:
+        res = translator.translate(text, dest=target_lang_code)
+        # googletrans returns attribute 'text'
+        return getattr(res, "text", str(res))
+    except Exception:
         return text
 
-# ----------------- PDF Utilities -----------------
-def extract_text_from_pdf(file_obj):
-    doc = fitz.open(stream=file_obj.read(), filetype="pdf")
-    return "\n".join([page.get_text() for page in doc])
+def bilingual(en_text: str, target_lang_code: str) -> str:
+    """Return combined English + translated line for UI labels."""
+    trans = cached_translate(en_text, target_lang_code)
+    if target_lang_code == "en":
+        return en_text
+    # show English then translated in parentheses
+    return f"{en_text} ({trans})"
 
-def split_text_into_chunks(text, max_tokens=2500):
-    enc = tiktoken.get_encoding("cl100k_base")
-    words = text.split()
-    chunks, current_chunk = [], []
-    for word in words:
-        current_chunk.append(word)
-        tokens = len(enc.encode(" ".join(current_chunk)))
-        if tokens >= max_tokens:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
+def write_exception(e: Exception):
+    st.error("An internal error occurred. See logs for details.")
+    st.exception(e)
+
+# ----------------------------
+# PDF helpers
+# ----------------------------
+def extract_text_from_pdf_bytes(bytes_io) -> str:
+    with fitz.open(stream=bytes_io.read(), filetype="pdf") as doc:
+        pages = [p.get_text("text") for p in doc]
+    return "\n".join(pages)
+
+def chunk_text_simple(text: str, max_chars: int = 4000) -> List[str]:
+    """Simple char-based chunking (fast and robust)."""
+    chunks = []
+    i = 0
+    L = len(text)
+    while i < L:
+        chunks.append(text[i:i+max_chars])
+        i += max_chars
     return chunks
 
-# ----------------- GPT Short Answer Generation -----------------
-def generate_short_answer_questions(text, total_questions=5):
+# ----------------------------
+# GPT: question generation
+# ----------------------------
+def generate_questions_from_text(text: str, n: int = 5) -> List[Dict[str,str]]:
+    """
+    Ask the model to return a JSON array of objects:
+      [{"question":"...","answer_key":"..."} ...]
+    All in English (we'll translate later).
+    """
     prompt = f"""
-You are a helpful assistant who generates clinically relevant short answer questions
-strictly based on the provided text.
-Make the questions clinically relevant to medical students/residents, Royal College style.
-Do NOT include specific case numbers or vitals.
+You are an expert medical educator. Based only on the text below, generate exactly {n} concise short-answer questions
+(targeted to medical trainees, Royal College style) and a one-sentence model answer for each.
+Return ONLY valid JSON in this exact format:
 
-Generate exactly {total_questions} questions in JSON format:
 [
-  {{"question": "Question text?", "answer_key": "Expected answer in English."}},
+  {{"question": "Question text in English", "answer_key": "Concise model answer in English"}},
   ...
 ]
-
-Return only valid JSON.
 
 TEXT:
 \"\"\"{text}\"\"\"
 """
     try:
-        response = client.chat.completions.create(
+        resp = client.chat.completions.create(
             model="gpt-4.1-2025-04-14",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+            messages=[{"role":"user","content":prompt}],
+            temperature=0.3
         )
-        return json.loads(response.choices[0].message.content)
+        content = resp.choices[0].message.content
+        data = json.loads(content)
+        # Validate and normalize
+        out = []
+        for item in data:
+            q = item.get("question", "").strip()
+            a = item.get("answer_key", "").strip()
+            if q and a:
+                out.append({"question_en": q, "answer_key_en": a})
+        return out
     except Exception as e:
-        st.warning(f"⚠️ GPT question generation failed: {e}")
+        write_exception(e)
         return []
 
-# ----------------- Quiz Evaluation (Partial Credit) -----------------
-def score_short_answers(user_answers, questions, lang_code):
-    results = []
-    for idx, ans in enumerate(user_answers):
-        correct_translated = questions[idx]["answer_key_translated"]
-        correct_en = questions[idx]["answer_key_en"]
-        
-        # Partial credit: percentage of words matched (case-insensitive)
-        ans_words = set(ans.lower().split())
-        key_words = set(correct_translated.lower().split())
-        match_ratio = len(ans_words & key_words) / max(len(key_words), 1)
-        is_correct = match_ratio  # between 0 and 1
-        
-        results.append({
-            "question_en": questions[idx]["question_en"],
-            "question_translated": questions[idx]["question_translated"],
-            "answer_key_en": correct_en,
-            "answer_key_translated": correct_translated,
-            "response": ans,
-            "partial_score": round(match_ratio, 2)
-        })
-    total_score = sum([r["partial_score"] for r in results])
-    return total_score, results
+# ----------------------------
+# Transcription via OpenAI hosted Whisper
+# ----------------------------
+def transcribe_audio_file_to_text(filepath: str) -> str:
+    """Send audio file to OpenAI transcription endpoint and return text."""
+    try:
+        with open(filepath, "rb") as f:
+            resp = client.audio.transcriptions.create(model="gpt-4o-mini-transcribe", file=f)
+        # response shape may vary; try common fields
+        text = getattr(resp, "text", None)
+        if text is None:
+            # If dict-like
+            try:
+                text = resp.get("text", "")
+            except Exception:
+                text = str(resp)
+        return text.strip() if text else ""
+    except Exception as e:
+        write_exception(e)
+        return ""
 
-# ----------------- PDF Upload -----------------
-uploaded_file = st.file_uploader(translate_text("📤 Upload your PDF file", target_language_code), type=["pdf"])
-if uploaded_file:
-    st.success(translate_text("✅ PDF uploaded successfully.", target_language_code))
-    pdf_text = extract_text_from_pdf(uploaded_file)
-    st.session_state["pdf_text"] = pdf_text
-    with st.expander(translate_text("🔍 Preview Extracted Text", target_language_code)):
-        st.text_area(translate_text("Extracted Text", target_language_code),
-                     pdf_text[:1000] + "...", height=300)
+# ----------------------------
+# Grading with partial credit + GPT feedback
+# ----------------------------
+def compute_partial_score(user_text: str, model_answer_translated: str) -> float:
+    """Simple partial credit: fraction of model-answer tokens present in user answer."""
+    def tokens(s: str):
+        return [t.strip(".,;:()[]{}\"'").lower() for t in s.split() if t.strip()]
+    key = set(tokens(model_answer_translated))
+    ans = set(tokens(user_text))
+    if not key:
+        return 0.0
+    matched = len(key & ans)
+    return matched / len(key)
 
-    total_questions = st.slider(translate_text("🔢 Number of questions", target_language_code), 1, 20, 5)
+def ask_gpt_feedback(expected_en: str, user_answer_target: str, target_lang_code: str) -> Dict[str,str]:
+    """
+    Ask GPT to produce a short English feedback + model answer; return both English and translated versions.
+    Return: {"feedback_en": "...", "model_en":"...", "feedback_translated":"...", "model_translated":"..."}
+    """
+    prompt = f"""
+You are an examiner. Provide:
+1) A single-sentence assessment of the student's answer (English).
+2) A concise one-sentence model answer (English).
 
-    if st.button(translate_text("🧠 Generate Questions", target_language_code)):
-        chunks = split_text_into_chunks(pdf_text)
-        first_chunk = chunks[0] if chunks else pdf_text
-        with st.spinner(translate_text("Generating questions...", target_language_code)):
-            questions = generate_short_answer_questions(first_chunk, total_questions)
-        if questions:
-            # Translate questions and answers for bilingual support
-            for q in questions:
-                q["question_en"] = q["question"]
-                q["answer_key_en"] = q["answer_key"]
-                q["question_translated"] = translate_text(q["question"], target_language_code)
-                q["answer_key_translated"] = translate_text(q["answer_key"], target_language_code)
-            st.session_state["questions"] = questions
-        else:
-            st.error(translate_text("❌ No questions generated.", target_language_code))
+Model answer (English): "{expected_en}"
+Student answer (in language code {target_lang_code}): "{user_answer_target}"
 
-# ----------------- Quiz Form -----------------
+Return JSON:
+{{"feedback_en":"...", "model_answer_en":"..."}}"""
+    
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4.1-2025-04-14",
+            messages=[{"role":"user","content":prompt}],
+            temperature=0
+        )
+        parsed = json.loads(resp.choices[0].message.content)
+        feedback_en = parsed.get("feedback_en","")
+        model_en = parsed.get("model_answer_en","")
+    except Exception:
+        feedback_en = ""
+        model_en = expected_en
+    # translate both back to target language
+    feedback_translated = cached_translate(feedback_en, target_lang_code)
+    model_translated = cached_translate(model_en, target_lang_code)
+    return {
+        "feedback_en": feedback_en,
+        "model_en": model_en,
+        "feedback_translated": feedback_translated,
+        "model_translated": model_translated
+    }
+
+# ----------------------------
+# UI: Sidebar language selection & settings
+# ----------------------------
+st.sidebar.header("Settings")
+selected_display = st.sidebar.selectbox("Select language / Sélectionnez la langue", list(LANG_MAP.keys()), index=0)
+target_code = LANG_MAP[selected_display]
+
+# Provide helpful short bilingual helper
+def ui_text(en: str) -> str:
+    return bilingual(en, target_code)
+
+# ----------------------------
+# Step 1: Upload PDF & generate questions
+# ----------------------------
+st.header(ui_text("1) Upload PDF and generate questions"))
+pdf_file = st.file_uploader(ui_text("Upload PDF (PDF only)"), type=["pdf"])
+
+if pdf_file:
+    st.success(ui_text("PDF uploaded successfully"))
+    if st.checkbox(ui_text("Preview extracted text (show/hide)")):
+        extracted = extract_text_from_pdf_bytes(pdf_file)
+        st.text_area(ui_text("Extracted Text (preview)"), extracted[:8000], height=300)
+
+    num_q = st.slider(ui_text("Number of questions to generate"), 1, 20, 5)
+
+    if st.button(ui_text("Generate questions")):
+        with st.spinner(ui_text("Generating questions — this may take a moment...")):
+            # use truncated chunk for speed
+            full_text = extract_text_from_pdf_bytes(pdf_file)
+            chunks = chunk_text_simple(full_text, max_chars=5000)
+            first_chunk = chunks[0] if chunks else full_text
+            questions = generate_questions_from_text(first_chunk, n=num_q)
+            if not questions:
+                st.error(ui_text("Failed to generate questions. Try a shorter document or reduce number."))
+            else:
+                # translate question & answers to user language and store bilingual fields
+                for q in questions:
+                    q["question_translated"] = cached_translate(q["question_en"], target_code)
+                    q["answer_key_translated"] = cached_translate(q["answer_key_en"], target_code)
+                st.session_state["questions"] = questions
+                # initialize user answers array
+                st.session_state["user_answers"] = [""] * len(questions)
+                st.success(ui_text("Questions generated and translated."))
+
+# ----------------------------
+# Step 2: Answer questions (click-to-record + editable textbox)
+# ----------------------------
 if st.session_state.get("questions"):
+    st.header(ui_text("2) Answer the questions"))
     questions = st.session_state["questions"]
-    user_answers = []
 
-    st.header(translate_text("📝 Take the Quiz", target_language_code))
-    st.write(translate_text("Answer the following questions:", target_language_code))
+    # iterate questions
+    for i, q in enumerate(questions):
+        st.subheader(f"{ui_text(f'Q{i+1} (English)')}: {q['question_en']}")
+        st.markdown(f"**{ui_text(f'({selected_display}):')}** {q['question_translated']}")
 
-    for idx, q in enumerate(questions):
-        st.subheader(f"Q{idx+1}: {q['question_en']} / {q['question_translated']}")
-        st.markdown(f"**{translate_text('Your answer:', target_language_code)}**")
+        st.write(ui_text("You can either type your answer below or record your voice using the Record button. Recorded audio is transcribed and placed into the textbox for editing."))
 
-        # ---------- Cloud-Compatible Click-to-Record ----------
-        st.write(translate_text("🎤 Click to record your answer:", target_language_code))
-        audio_data = audiorecorder(
-            translate_text("Record", target_language_code),
-            translate_text("Stop", target_language_code)
-        )
+        # --- Record in browser with local audiorecorder component ---
+        # audiorecorder returns audio bytes-like object (or empty bytes when not used)
+        rec_label = ui_text("Record answer (click Record → Stop)")
+        audio_bytes = audiorecorder(rec_label, ui_text("Stop"))
 
-        user_input = st.text_area(
-            "",
-            key=f"ans_{idx}",
-            placeholder=translate_text("Type your answer here...", target_language_code)
-        )
+        # Text area for editable answer (persist in session_state)
+        key_txt = f"user_answer_{i}"
+        if "user_answers" not in st.session_state:
+            st.session_state["user_answers"] = [""] * len(questions)
+        # If there's already a value (from previous transcription or typing), keep it
+        default_text = st.session_state["user_answers"][i] or ""
+        typed = st.text_area(ui_text("Your answer (editable)"), value=default_text, key=key_txt, height=140)
 
-        if len(audio_data) > 0:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmpfile:
-                sf.write(tmpfile.name, audio_data.tobytes(), samplerate=44100, subtype='PCM_16')
-                audio_path = tmpfile.name
-            st.audio(audio_path, format="audio/wav")
+        # If recorder returned audio, save, transcribe, and populate textbox
+        if audio_bytes and len(audio_bytes) > 0:
+            try:
+                # audio_bytes might be bytes or bytearray. Write to temp file directly.
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                    tmp_path = tmp.name
+                    # Write bytes directly
+                    if isinstance(audio_bytes, (bytes, bytearray)):
+                        tmp.write(audio_bytes)
+                    else:
+                        # Some audiorecorder implementations return numpy array or object with tobytes()
+                        try:
+                            tmp.write(audio_bytes.tobytes())
+                        except Exception:
+                            # fallback: convert to str and write (rare)
+                            tmp.write(bytes(audio_bytes))
+                st.info(ui_text("Transcribing audio..."))
+                transcript = transcribe_audio_file_to_text(tmp_path)
+                if transcript:
+                    st.session_state["user_answers"][i] = transcript
+                    st.success(ui_text("Transcription complete — you can edit the text below."))
+                    # update the text area by re-rendering (can't directly set value prop; use another area to show)
+                    st.experimental_rerun()
+                else:
+                    st.warning(ui_text("No transcription produced. Please try again or type your answer."))
+            except Exception as e:
+                write_exception(e)
 
-            with open(audio_path, "rb") as f:
-                transcript = client.audio.transcriptions.create(
-                    model="gpt-4o-mini-transcribe",
-                    file=f
-                )
-            user_input = transcript.text
-            st.text_area("", value=user_input, key=f"ans_{idx}_transcribed")
+        else:
+            # store typed answer into session state
+            st.session_state["user_answers"][i] = typed
 
-        user_answers.append(user_input)
-
-    if st.button(translate_text("✅ Evaluate My Answers", target_language_code)):
-        score, results = score_short_answers(user_answers, questions, target_language_code)
-        st.success(f"🎯 {translate_text('Your score', target_language_code)}: {round(score,2)} / {len(results)}")
-        with st.expander(translate_text("📊 Detailed Feedback", target_language_code)):
-            for i, r in enumerate(results):
-                st.markdown(f"**Q{i+1}: {r['question_en']} / {r['question_translated']}**")
-                st.markdown(f"- ✅ {translate_text('Correct Answer', target_language_code)}: {r['answer_key_en']} / {r['answer_key_translated']}")
-                st.markdown(f"- 💬 {translate_text('Your Response', target_language_code)}: {r['response']}")
-                st.markdown(f"- {translate_text('Partial Score', target_language_code)}: {r['partial_score']}")
+    # ----------------------------
+    # Evaluation button and scoring
+    # ----------------------------
+    if st.button(ui_text("Evaluate my answers")):
+        with st.spinner(ui_text("Scoring answers and generating feedback...")):
+            user_answers = st.session_state.get("user_answers", [""] * len(questions))
+            total_score, detailed = grade_answers(user_answers, questions, target_code)
+            # show score
+            st.success(ui_text(f"Scoring complete. Total score (sum of fractions): {round(total_score, 2)}"))
+            # Show detailed feedback per question
+            for idx, res in enumerate(detailed):
+                st.markdown(f"### {ui_text('Q')} {idx+1}: {res['question_translated']}")
+                st.markdown(f"- **{ui_text('Model answer')}:** {res['answer_key_translated']}  /  {res['answer_key_en']}")
+                st.markdown(f"- **{ui_text('Your response')}:** {res['response']}")
+                st.markdown(f"- **{ui_text('Partial score')}:** {res['score_fraction']:.2f}")
+                if res.get("feedback_translated"):
+                    st.markdown(f"- **{ui_text('Feedback')}:** {res['feedback_translated']}")
                 st.markdown("---")
+
 
