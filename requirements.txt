@@ -3,4 +3,4 @@ openai>=1.44.0
 tiktoken
 pymupdf
 googletrans
-streamlit_webrtc
+hashlib
