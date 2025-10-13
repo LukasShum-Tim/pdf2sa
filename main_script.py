@@ -1,16 +1,19 @@
 import streamlit as st
+from googletrans import Translator
 import pymupdf as fitz  # PyMuPDF
 import openai
-import json
-import re
-from googletrans import Translator
+import tempfile
 
-# ------------------ Configuration ------------------
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-
+# Initialize translator
 translator = Translator()
 
-# ------------------ Helpers ------------------
+# OpenAI API Key
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+st.set_page_config(page_title="PDF Question Generator", layout="wide")
+
+# -------------------- Helper Functions -------------------- #
+
 def translate_text(text, target_lang):
     if target_lang.lower() == "en":
         return text
@@ -20,112 +23,96 @@ def translate_text(text, target_lang):
         st.warning(f"Translation failed: {e}")
         return text
 
-def parse_questions_json(model_output):
-    """Safely extract JSON array from model output"""
-    match = re.search(r'\[\s*{.*}\s*\]', model_output, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except:
-            return []
-    return []
-
-def extract_pdf_text(pdf_file):
-    text = ""
+def extract_text_from_pdf(pdf_file):
     doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    text = ""
     for page in doc:
         text += page.get_text()
     return text
 
 def generate_questions(pdf_text, num_questions):
     prompt = f"""
-    Generate {num_questions} multiple-choice questions based on the following text.
-    Format your output strictly as JSON, each question with fields: "question", "options" (list), "answer" (single correct option).
+    Generate {num_questions} high-quality questions based on the following text in JSON format:
+    {{
+        "questions": [
+            {{
+                "question": "Question text here",
+                "answer": "Model answer here"
+            }}
+        ]
+    }}
     Text:
     {pdf_text}
     """
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4-1106-preview",
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    model_output = response.choices[0].message.content
-    questions = parse_questions_json(model_output)
-    return questions
+    questions_json = response.choices[0].message.content
+    return questions_json
 
-def evaluate_answer(user_answer, correct_answer, lang):
+def evaluate_answer(user_answer, correct_answer):
     prompt = f"""
-    Evaluate the user's answer and return 'Correct' or 'Incorrect'.
-    User answer: {user_answer}
-    Correct answer: {correct_answer}
+    Evaluate the user's answer against the correct answer.
+    User Answer: {user_answer}
+    Correct Answer: {correct_answer}
+    Provide a short evaluation and indicate correctness (Correct/Incorrect).
     """
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4-1106-preview",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
-    evaluation = response.choices[0].message.content.strip()
-    evaluation_translated = translate_text(evaluation, lang)
-    return evaluation, evaluation_translated
+    evaluation = response.choices[0].message.content
+    return evaluation
 
-# ------------------ Streamlit UI ------------------
-st.title("📄 PDF Quiz Generator with Audio & Translation")
+# -------------------- Streamlit UI -------------------- #
+
+st.title("PDF Question Generator & Evaluator")
 
 # Language selection
-langs = {"English": "en", "French": "fr", "Spanish": "es", "German": "de"}
-selected_lang = st.selectbox("Select your language / Sélectionnez votre langue", list(langs.keys()))
-lang_code = langs[selected_lang]
+languages = ["en", "fr", "es", "de", "it", "pt"]
+selected_lang = st.selectbox("Select your language / Sélectionnez votre langue", languages, index=0)
 
 # PDF upload
 uploaded_pdf = st.file_uploader(
-    translate_text("Upload your PDF file / Téléversez votre fichier PDF", lang_code), type="pdf"
+    translate_text("Upload your PDF file / Téléversez votre fichier PDF", selected_lang),
+    type="pdf"
 )
 
-if uploaded_pdf:
-    pdf_text = extract_pdf_text(uploaded_pdf)
-    st.success(translate_text("PDF successfully loaded!", lang_code))
+num_questions = st.number_input(
+    translate_text("Number of questions / Nombre de questions", selected_lang),
+    min_value=1, max_value=10, value=1
+)
 
-    # Number of questions
-    num_questions = st.number_input(
-        translate_text("Number of questions / Nombre de questions", lang_code),
-        min_value=1, max_value=10, value=1, step=1
-    )
+if uploaded_pdf is not None:
+    pdf_text = extract_text_from_pdf(uploaded_pdf)
 
-    if st.button(translate_text("Generate Questions / Générer les questions", lang_code)):
-        questions_data = generate_questions(pdf_text, num_questions)
-        if not questions_data:
-            st.error(translate_text("Failed to generate questions. Please try again.", lang_code))
-        else:
-            # Store questions and answers in session
-            st.session_state.questions = questions_data
-            st.session_state.user_answers = [""] * len(questions_data)
-            st.session_state.evaluations = [""] * len(questions_data)
+    if st.button(translate_text("Generate Questions / Générer des questions", selected_lang)):
+        questions_json = generate_questions(pdf_text, num_questions)
+        try:
+            import json
+            questions_data = json.loads(questions_json)
+        except Exception as e:
+            st.error(f"Failed to parse questions JSON: {e}")
+            st.stop()
 
-# Display questions
-if "questions" in st.session_state:
-    for idx, q in enumerate(st.session_state.questions):
-        st.markdown(f"**Q{idx+1} / {translate_text(f'Question {idx+1}', lang_code)}:** {q['question']}")
-        st.write(f"Options: {', '.join(q['options'])}")
+        st.session_state['questions'] = questions_data["questions"]
 
-        # Textbox for user answer
-        user_input = st.text_input(
-            translate_text("Your answer / Votre réponse", lang_code),
-            key=f"user_answer_{idx}"
+if 'questions' in st.session_state:
+    for idx, q in enumerate(st.session_state['questions']):
+        st.markdown(f"**Q{idx+1} (EN):** {q['question']}")
+        st.markdown(f"**Q{idx+1} ({selected_lang.upper()}):** {translate_text(q['question'], selected_lang)}")
+        user_answer = st.text_area(
+            f"Your Answer / Votre réponse (Q{idx+1})",
+            key=f"answer_{idx}"
         )
-        st.session_state.user_answers[idx] = user_input
 
-        # Audio recording
-        audio_bytes = st.audio_input(
-            translate_text("Record your answer / Enregistrez votre réponse", lang_code),
-            key=f"audio_{idx}"
-        )
-        if audio_bytes:
-            st.session_state.user_answers[idx] += f" {audio_bytes.decode('utf-8', errors='ignore')}"
-
-        # Evaluate button
-        if st.button(translate_text("Evaluate Answer / Évaluer la réponse", lang_code), key=f"eval_{idx}"):
-            correct_answer = q["answer"]
-            eval_en, eval_translated = evaluate_answer(user_input, correct_answer, lang_code)
-            st.session_state.evaluations[idx] = f"English: {eval_en} | {selected_lang}: {eval_translated}"
-            st.success(st.session_state.evaluations[idx])
-
+        if st.button(translate_text("Evaluate Answer / Évaluer la réponse", selected_lang), key=f"eval_{idx}"):
+            evaluation_en = evaluate_answer(user_answer, q['answer'])
+            evaluation_local = translate_text(evaluation_en, selected_lang)
+            st.markdown(f"**Evaluation (EN):** {evaluation_en}")
+            st.markdown(f"**Evaluation ({selected_lang.upper()}):** {evaluation_local}")
+            st.markdown(f"**Correct Answer (EN):** {q['answer']}")
+            st.markdown(f"**Correct Answer ({selected_lang.upper()}):** {translate_text(q['answer'], selected_lang)}")
