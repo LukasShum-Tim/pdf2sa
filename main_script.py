@@ -204,7 +204,7 @@ if st.session_state["questions"]:
                 st.session_state["user_answers"][i] = transcription.text
                 st.session_state[transcribed_key] = True
                 st.toast(bilingual_text("🎧 Transcription complete — text added below."), icon="🎤")
-                st.experimental_rerun()
+                st.rerun()
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
