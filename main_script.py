@@ -65,6 +65,7 @@ def safe_translate(text, target_language_code):
 # LANGUAGE SELECTION
 # -------------------------------
 language_map = {
+    'English': 'en',
     'Afrikaans': 'af',
     'Albanian': 'sq',
     'Amharic': 'am',
@@ -86,7 +87,6 @@ language_map = {
     'Czech': 'cs',
     'Danish': 'da',
     'Dutch': 'nl',
-    'English': 'en',
     'Esperanto': 'eo',
     'Estonian': 'et',
     'Filipino': 'tl',
@@ -203,7 +203,7 @@ if uploaded_file:
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 3, 10, 5)
+    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 10, 5)
 
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
@@ -215,8 +215,9 @@ if pdf_text:
 
         prompt = f"""
 You are an expert medical educator.
-Generate {num_questions} concise short-answer questions and their answer keys
-based on the following content. Focus on clinically relevant key facts.
+Generate {num_questions} concise short-answer questions and their answer keys based on the following content. Focus on clinically relevant key facts.
+Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
+If the text refers to case numbers, do not add that information in the questions.
 
 Return ONLY JSON in this format:
 [
@@ -231,7 +232,7 @@ SOURCE TEXT:
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.5
+                temperature=0.7
             )
             raw = response.choices[0].message.content.strip()
             questions = json.loads(raw)
