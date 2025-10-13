@@ -178,28 +178,36 @@ if st.session_state["questions"]:
         # --- Audio input (NEW FEATURE) ---
         audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
 
-        if audio_data is not None:
+          # --- Audio input with live transcription ---
+        audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
+
+        # Track transcription state
+        transcribed_key = f"transcribed_{i}"
+        if transcribed_key not in st.session_state:
+            st.session_state[transcribed_key] = False
+
+        if audio_data is not None and not st.session_state[transcribed_key]:
             try:
-                # Save UploadedFile contents to a temporary .webm file
                 with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_file:
                     tmp_file.write(audio_data.read())
-                    tmp_file_path = tmp_file.name
+                    tmp_path = tmp_file.name
 
-                # Send to Whisper with correct file format
-                with open(tmp_file_path, "rb") as f:
+                # Transcribe with Whisper
+                with open(tmp_path, "rb") as f:
                     transcription = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=f
                     )
 
-                # Store transcription + update UI
+                # Save transcription and flag as done
                 st.session_state["user_answers"][i] = transcription.text
-                st.success(bilingual_text("🎧 Transcription complete — text added below."))
-                st.rerun()
+                st.session_state[transcribed_key] = True
+                st.toast(bilingual_text("🎧 Transcription complete — text added below."), icon="🎤")
+                st.experimental_rerun()
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
-
+                
         # Text area (auto-updates with transcribed or typed text)
         label = bilingual_text("✏️ Your Answer:")
         user_answers[i] = st.text_area(
