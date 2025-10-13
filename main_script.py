@@ -179,10 +179,13 @@ if st.session_state["questions"]:
         #audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
 
         # Use a stable label and unique key to prevent duplicate-element conflicts
-        audio_label = f"🎤 Dictate your answer (Q{i+1})"
-        audio_data = st.audio_input(audio_label, key=f"audio_input_{i}")
-        
-        # Track transcription state
+        #audio_label = f"🎤 Dictate your answer (Q{i+1})"
+        #audio_data = st.audio_input(audio_label, key=f"audio_input_{i}")
+
+        # --- Audio input with transcription and proper rerun display ---
+        st.markdown(bilingual_text("🎤 Dictate your answer:"))
+        audio_data = st.audio_input("", key=f"audio_input_{i}")
+
         transcribed_key = f"transcribed_{i}"
         if transcribed_key not in st.session_state:
             st.session_state[transcribed_key] = False
@@ -200,14 +203,18 @@ if st.session_state["questions"]:
                         file=f
                     )
 
-                # Save transcription and flag as done
-                st.session_state["user_answers"][i] = transcription.text
+                # ✅ Store the text before rerun
+                st.session_state["user_answers"][i] = transcription.text.strip()
                 st.session_state[transcribed_key] = True
-                st.toast(bilingual_text("🎧 Transcription complete — text added below."), icon="🎤")
+
+                st.toast(bilingual_text("🎧 Transcription complete — added to answer box."), icon="🎤")
+
+                # Force a rerun to refresh the textbox display
                 st.rerun()
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+
                 
         # Text area (auto-updates with transcribed or typed text)
         label = bilingual_text("✏️ Your Answer:")
