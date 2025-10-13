@@ -175,12 +175,13 @@ if st.session_state["questions"]:
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
-        # --- Audio input (NEW FEATURE) ---
-        audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
-
           # --- Audio input with live transcription ---
-        audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
+        #audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
 
+        # Use a stable label and unique key to prevent duplicate-element conflicts
+        audio_label = f"🎤 Dictate your answer (Q{i+1})"
+        audio_data = st.audio_input(audio_label, key=f"audio_input_{i}")
+        
         # Track transcription state
         transcribed_key = f"transcribed_{i}"
         if transcribed_key not in st.session_state:
