@@ -1,100 +1,113 @@
+# main_script.py
 import streamlit as st
 import pymupdf as fitz  # PyMuPDF
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
 from googletrans import Translator
-import openai
-import tempfile
-import os
+from openai import OpenAI
 
-# --- Configuration ---
-openai.api_key = st.secrets.get("OPENAI_API_KEY")  # store securely
+# Initialize OpenAI client
+openai = OpenAI()
 
-# --- Language Selection ---
-lang_codes = {
-    "English": "en",
-    "French": "fr",
-    "Spanish": "es",
-    "German": "de",
-    # Add more as needed
-}
-
-selected_lang = st.selectbox("Select your language / Sélectionnez la langue", list(lang_codes.keys()))
+# Initialize translator
 translator = Translator()
 
-def translate(text):
-    if selected_lang != "English":
-        code = lang_codes[selected_lang]
-        try:
-            return translator.translate(text, dest=code).text
-        except:
-            return text
+# ------------------------------
+# Helper functions
+# ------------------------------
+
+def translate(text, dest_lang):
+    if dest_lang.lower() == "english":
+        return text
+    try:
+        return translator.translate(text, dest=dest_lang).text
+    except:
+        return text
+
+def extract_text_from_pdf(pdf_file):
+    doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
     return text
 
-# --- PDF Upload ---
-uploaded_pdf = st.file_uploader(translate("Upload your PDF file / Téléversez votre fichier PDF"), type="pdf")
+def generate_questions(text, num_questions):
+    prompt = f"Generate {num_questions} short-answer questions from the following text:\n\n{text}"
+    response = openai.chat.completions.create(
+        model="gpt-4-1106-preview",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    raw_questions = response.choices[0].message.content.strip().split("\n")
+    questions_list = [q.strip() for q in raw_questions if q.strip()]
+    return questions_list[:num_questions]  # ensure exact number
 
-if uploaded_pdf:
-    doc = fitz.open(stream=uploaded_pdf.read(), filetype="pdf")
-    pdf_text = ""
-    for page in doc:
-        pdf_text += page.get_text()
+def transcribe_audio(audio_data):
+    if audio_data is None:
+        return ""
+    response = openai.audio.transcriptions.create(
+        model="gpt-4o-transcribe",
+        file=audio_data
+    )
+    return response["text"]
 
-    # --- Number of Questions ---
-    num_questions = st.number_input(translate("Number of questions / Nombre de questions"), min_value=1, max_value=20, value=5, step=1)
+# ------------------------------
+# Streamlit App
+# ------------------------------
 
-    # --- Generate Questions ---
-    if st.button(translate("Generate Questions / Générer des questions")):
-        llm = ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0.5)
-        prompt_template = """You are a medical educator. Based on the following text, generate {num_questions} clear, concise questions suitable for trainee assessment. 
-        Text: {text}"""
-        prompt = PromptTemplate(input_variables=["text", "num_questions"], template=prompt_template)
-        chain = LLMChain(llm=llm, prompt=prompt)
-        questions_output = chain.run(text=pdf_text, num_questions=num_questions)
+st.title("PDF to Short Answer Question Generator / Générateur de questions à réponse courte à partir de PDF")
 
-        questions = [q.strip() for q in questions_output.split("\n") if q.strip()]
-        st.session_state.questions = questions
-        st.session_state.answers = [""] * len(questions)
+# Language selection
+languages = ["English", "French", "Spanish", "German", "Italian"]
+selected_lang = st.selectbox("Select Language / Choisir la langue", languages)
 
-# --- Show Questions and Answer Inputs ---
-if 'questions' in st.session_state:
-    st.write(translate("Answer the following questions / Répondez aux questions suivantes:"))
-    for i, question in enumerate(st.session_state.questions):
-        st.markdown(f"**Q{i+1}: {translate(question)}**")
+# Upload PDF
+uploaded_pdf = st.file_uploader(
+    translate("Upload your PDF file", selected_lang), type="pdf"
+)
 
-        # Text input
-        st.session_state.answers[i] = st.text_area(
-            translate("Your answer / Votre réponse"), 
-            value=st.session_state.answers[i], 
-            key=f"answer_{i}"
+# Number of questions
+num_questions = st.number_input(
+    translate("Number of Questions / Nombre de questions", selected_lang),
+    min_value=1, max_value=10, value=3, step=1
+)
+
+# Generate questions button
+if uploaded_pdf and st.button(translate("Generate Questions / Générer des questions", selected_lang)):
+    pdf_text = extract_text_from_pdf(uploaded_pdf)
+    questions_list = generate_questions(pdf_text, num_questions)
+
+    # Translate questions if necessary
+    if selected_lang.lower() != "english":
+        questions_list = [translate(q, selected_lang) for q in questions_list]
+
+    st.session_state["questions"] = questions_list
+    st.session_state["answers"] = [""] * len(questions_list)
+
+# Display questions with textareas and record buttons
+if "questions" in st.session_state:
+    for i, q in enumerate(st.session_state["questions"]):
+        st.markdown(f"**{translate('Question', selected_lang)} {i+1}:** {q}")
+        
+        # Answer textarea
+        st.text_area(
+            translate("Your Answer / Votre réponse", selected_lang),
+            key=f"answer_{i}",
+            value=st.session_state["answers"][i]
         )
-
-        # Audio input
+        
+        # Audio recorder
         audio_data = st.audio_input(
-            label=translate("Record your answer (optional) / Enregistrez votre réponse (optionnel)"),
+            translate("Record your answer / Enregistrez votre réponse", selected_lang),
             key=f"audio_{i}"
         )
-        if audio_data:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-                tmp_file.write(audio_data.read())
-                tmp_filename = tmp_file.name
-            # Transcribe audio
-            with open(tmp_filename, "rb") as f:
-                transcript = openai.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f
-                )
-                st.session_state.answers[i] = transcript.text
-            os.remove(tmp_filename)
-
-# --- Evaluate Answers ---
-if 'questions' in st.session_state and st.button(translate("Evaluate Answers / Évaluer les réponses")):
-    st.write(translate("Evaluation / Évaluation:"))
-    for i, question in enumerate(st.session_state.questions):
-        llm = ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
-        eval_prompt = f"Question: {question}\nStudent Answer: {st.session_state.answers[i]}\nProvide a concise model answer."
-        response = llm.predict(eval_prompt)
-        st.markdown(f"**Q{i+1} Model Answer / Réponse modèle:** {translate(response)}")
+        
+        # Transcribe audio and update textarea
+        if st.button(translate("Transcribe / Transcrire", selected_lang), key=f"transcribe_{i}"):
+            transcript = transcribe_audio(audio_data)
+            st.session_state[f"answer_{i}"] = transcript
+            st.session_state["answers"][i] = transcript
+            st.success(translate("Transcription complete / Transcription terminée", selected_lang))
+        
+        # Evaluate answer button (example placeholder)
+        if st.button(translate("Evaluate Answer / Évaluer la réponse", selected_lang), key=f"eval_{i}"):
+            st.info(translate("Evaluation not yet implemented / Évaluation non encore implémentée", selected_lang))
 
 
