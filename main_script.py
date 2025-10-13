@@ -13,7 +13,7 @@ import re
 # -------------------------------
 # INITIALIZATION
 # -------------------------------
-client = OpenAI(st.secrets["OPENAI_API_KEY"])
+client = OpenAI()
 translator = Translator()
 
 st.set_page_config(
