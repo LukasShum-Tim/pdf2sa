@@ -7,7 +7,7 @@ import os
 from typing import List, Dict, Any
 
 # Local audiorecorder (you added the folder to the repo)
-from audiorecorder import audiorecorder
+from audiorecorder.audiorecorder import audiorecorder
 
 # OpenAI client (ensure OPENAI_API_KEY in Streamlit secrets)
 from openai import OpenAI
