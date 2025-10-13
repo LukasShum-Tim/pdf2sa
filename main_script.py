@@ -165,26 +165,23 @@ SOURCE TEXT:
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
+# -------------------------------
+# USER ANSWERS (WITH AUDIO INPUT)
+# -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
+
+    # Ensure stable structure in session_state
     if "user_answers" not in st.session_state or len(st.session_state["user_answers"]) != len(questions):
         st.session_state["user_answers"] = [""] * len(questions)
-    user_answers = st.session_state["user_answers"]
 
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
-          # --- Audio input with live transcription ---
-        #audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
-
-        # Use a stable label and unique key to prevent duplicate-element conflicts
-        #audio_label = f"🎤 Dictate your answer (Q{i+1})"
-        #audio_data = st.audio_input(audio_label, key=f"audio_input_{i}")
-
-        # --- Audio input with transcription and proper rerun display ---
+        # --- Audio input with Whisper transcription ---
         st.markdown(bilingual_text("🎤 Dictate your answer:"))
         audio_data = st.audio_input("", key=f"audio_input_{i}")
 
@@ -192,42 +189,41 @@ if st.session_state["questions"]:
         if transcribed_key not in st.session_state:
             st.session_state[transcribed_key] = False
 
+        # Handle new audio input
         if audio_data is not None and not st.session_state[transcribed_key]:
             try:
                 with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_file:
                     tmp_file.write(audio_data.read())
                     tmp_path = tmp_file.name
 
-                # Transcribe with Whisper
+                # Transcribe using Whisper
                 with open(tmp_path, "rb") as f:
                     transcription = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=f
                     )
 
-                # ✅ Store the text before rerun
-                st.session_state["user_answers"][i] = transcription.text.strip()
-                st.session_state[transcribed_key] = True
+                text_out = getattr(transcription, "text", "").strip()
+                if text_out:
+                    # ✅ Inject directly into Streamlit's widget state
+                    st.session_state[f"ans_{i}"] = text_out
+                    st.session_state["user_answers"][i] = text_out
+                    st.session_state[transcribed_key] = True
 
-                st.toast(bilingual_text("🎧 Transcription complete — added to answer box."), icon="🎤")
-
-                # Force a rerun to refresh the textbox display
-                st.rerun()
+                    st.toast(bilingual_text("🎧 Transcription complete — added to answer box."), icon="🎤")
+                    time.sleep(0.3)
+                    st.rerun()
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
-                
-        # Text area (auto-updates with transcribed or typed text)
+        # --- Text area (bound directly to Streamlit widget state) ---
         label = bilingual_text("✏️ Your Answer:")
-        user_answers[i] = st.text_area(
-            label,
-            value=st.session_state["user_answers"][i],
-            height=80,
-            key=f"ans_{i}"
-        )
+        # ⚡ Remove the value= parameter to let Streamlit persist edits/transcriptions
+        current_text = st.text_area(label, height=80, key=f"ans_{i}")
 
-    st.session_state["user_answers"] = user_answers
+        # Keep session_state["user_answers"] synced
+        st.session_state["user_answers"][i] = current_text
 
     # -------------------------------
     # EVALUATION
