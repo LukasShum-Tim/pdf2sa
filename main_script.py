@@ -19,7 +19,7 @@ translator = Translator()
 st.set_page_config(
     page_title="📘 Multilingual Short-Answer Trainer",
     page_icon="🧠",
-    layout="wide"
+    layout="centered"
 )
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
