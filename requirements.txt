@@ -9,3 +9,4 @@ gtts
 pydub
 faiss-cpu
 tiktoken
+pdfplumber
