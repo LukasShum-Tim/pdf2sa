@@ -10,3 +10,4 @@ pydub
 faiss-cpu
 tiktoken
 pdfplumber
+speech_recognition
