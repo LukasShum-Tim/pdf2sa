@@ -53,6 +53,9 @@ if uploaded_file:
         docs = vectorstore.similarity_search("Generate exam questions", k=min(5, len(chunks)))
         context_text = " ".join([d.page_content for d in docs])
 
+        answer_text = st.session_state['answers'][i].replace("{", "{{").replace("}", "}}")
+
+      
         prompt = f"""
         You are an expert examiner. Generate {num_questions} Royal College-style oral exam questions from the following text. 
         Provide only the question text.
