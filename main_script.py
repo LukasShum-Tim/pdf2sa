@@ -4,6 +4,13 @@ import pymupdf as fitz  # PyMuPDF
 from openai import OpenAI
 from googletrans import Translator
 import time
+from io import BytesIO
+
+# -------------------------------
+# OPTIONAL: For voice recording in Streamlit
+# pip install streamlit-webrtc
+from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
+import av
 
 # -------------------------------
 # INITIALIZATION
@@ -18,7 +25,7 @@ st.set_page_config(
 )
 
 st.title("🧠 Multilingual Short-Answer Trainer from PDF")
-st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, record voice if desired, and get bilingual feedback.")
 
 # -------------------------------
 # SESSION STATE INITIALIZATION
@@ -109,7 +116,6 @@ if pdf_text:
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
-        # Limit text size for speed
         trimmed_text = pdf_text[:4000]
         time.sleep(0.2)
         progress.progress(10, text=bilingual_text("Preparing content..."))
@@ -161,27 +167,66 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS
+# USER ANSWERS WITH VOICE
 # -------------------------------
 if st.session_state["questions"]:
-    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
+    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions (Type or Speak)"))
 
     questions = st.session_state["questions"]
     user_answers = st.session_state.get("user_answers", [""] * len(questions))
+
+    # Voice transcription processor
+    class AudioProcessor(AudioProcessorBase):
+        def __init__(self):
+            self.audio_buffer = BytesIO()
+        def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+            pcm = frame.to_ndarray()
+            self.audio_buffer.write(pcm.tobytes())
+            return frame
 
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
         label = bilingual_text("✏️ Your Answer:")
+        
+        # Text input area
         user_answers[i] = st.text_area(label, value=user_answers[i], height=80, key=f"ans_{i}")
+
+        # Voice recorder
+        st.markdown("**🎤 Record your answer (optional):**")
+        webrtc_ctx = webrtc_streamer(
+            key=f"recorder_{i}",
+            mode=WebRtcMode.SENDONLY,
+            audio_processor_factory=AudioProcessor,
+            media_stream_constraints={"audio": True, "video": False},
+            async_processing=True
+        )
+
+        if webrtc_ctx and webrtc_ctx.audio_receiver:
+            audio_frames = webrtc_ctx.audio_receiver.get_frames(timeout=1)
+            if audio_frames:
+                # Concatenate frames into bytes
+                audio_bytes = b"".join([f.to_ndarray().tobytes() for f in audio_frames])
+                # Transcribe using OpenAI
+                try:
+                    audio_file = BytesIO(audio_bytes)
+                    transcript = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file
+                    )
+                    # Append or replace text area content
+                    user_answers[i] = transcript.text
+                    st.success(bilingual_text("🎤 Voice transcribed to text!"))
+                except Exception as e:
+                    st.error(bilingual_text(f"⚠️ Voice transcription failed: {e}"))
 
     st.session_state["user_answers"] = user_answers
 
-    # -------------------------------
-    # EVALUATION
-    # -------------------------------
-    def score_short_answers(user_answers, questions):
-        grading_prompt = f"""
+# -------------------------------
+# EVALUATION (UNCHANGED)
+# -------------------------------
+def score_short_answers(user_answers, questions):
+    grading_prompt = f"""
 You are an examiner. Score each short-answer response on a 0–2 scale.
 Return ONLY JSON:
 [
@@ -199,34 +244,35 @@ QUESTIONS AND RESPONSES:
     for q, a in zip(questions, user_answers)
 ], indent=2)}
 """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "user", "content": grading_prompt}],
-                temperature=0
-            )
-            results = json.loads(response.choices[0].message.content)
-            for r in results:
-                r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
-                r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
-            return results
-        except Exception as e:
-            st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
-            return []
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": grading_prompt}],
+            temperature=0
+        )
+        results = json.loads(response.choices[0].message.content)
+        for r in results:
+            r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
+            r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
+        return results
+    except Exception as e:
+        st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
+        return []
 
-    if st.button(bilingual_text("🚀 Evaluate My Answers")):
-        with st.spinner(bilingual_text("Evaluating your answers...")):
-            results = score_short_answers(user_answers, questions)
-            st.session_state['evaluations'] = results  # store evaluations safely
-        if results:
-            st.success(bilingual_text("✅ Evaluation complete!"))
-            with st.expander(bilingual_text("📊 Detailed Feedback")):
-                for i, (q, r) in enumerate(zip(questions, results)):
-                    st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
-                    st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
-                    st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
-                    st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
-                    st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
-                    st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
-                    st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
-                    st.markdown("---")
+if st.button(bilingual_text("🚀 Evaluate My Answers")):
+    with st.spinner(bilingual_text("Evaluating your answers...")):
+        results = score_short_answers(user_answers, questions)
+        st.session_state['evaluations'] = results
+    if results:
+        st.success(bilingual_text("✅ Evaluation complete!"))
+        with st.expander(bilingual_text("📊 Detailed Feedback")):
+            for i, (q, r) in enumerate(zip(questions, results)):
+                st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
+                st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
+                st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
+                st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
+                st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
+                st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
+                st.markdown("---")
+
