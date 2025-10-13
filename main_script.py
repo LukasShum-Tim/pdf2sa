@@ -1,14 +1,13 @@
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.chat_models import ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
-from langchain.chat_models import ChatOpenAI
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 from io import BytesIO
-import os
 
 # ---------------------------
 # Streamlit UI
@@ -19,34 +18,36 @@ st.title("PDF to Conversational AI")
 uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 target_language = st.selectbox("Translate answers to:", ["en", "fr", "de", "es", "it", "pt"])
 
+MAX_CHUNKS = 50  # Limit embeddings for speed
+
 if uploaded_file:
-    # ---------------------------
-    # Read PDF
-    # ---------------------------
-    pdf_reader = PdfReader(uploaded_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
+    with st.spinner("Reading PDF..."):
+        pdf_reader = PdfReader(uploaded_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() or ""
 
     # ---------------------------
     # Text Splitting
     # ---------------------------
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=100
-    )
-    chunks = text_splitter.split_text(text)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    chunks = splitter.split_text(text)
+    
+    # Limit chunks for speed
+    if len(chunks) > MAX_CHUNKS:
+        chunks = chunks[:MAX_CHUNKS]
 
     # ---------------------------
     # Embeddings & Vectorstore
     # ---------------------------
-    embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.from_texts(chunks, embeddings)
+    with st.spinner("Creating embeddings..."):
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_texts(chunks, embeddings)
+        retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
     # ---------------------------
-    # Conversational Retrieval
+    # Conversational QA Chain
     # ---------------------------
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
     qa_chain = ConversationalRetrievalChain.from_llm(
         ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo"),
         retriever=retriever
@@ -60,8 +61,12 @@ if uploaded_file:
     # ---------------------------
     user_question = st.text_input("Ask a question about your PDF:")
     if user_question:
-        result = qa_chain({"question": user_question, "chat_history": st.session_state.conversation})
-        answer = result["answer"]
+        with st.spinner("Generating answer..."):
+            result = qa_chain({
+                "question": user_question,
+                "chat_history": st.session_state.conversation
+            })
+            answer = result["answer"]
 
         # ---------------------------
         # Translate Answer
@@ -76,7 +81,7 @@ if uploaded_file:
             answer_translated = answer
 
         # ---------------------------
-        # Display
+        # Display Answer
         # ---------------------------
         st.write("**Answer:**")
         st.write(answer_translated)
