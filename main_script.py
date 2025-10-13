@@ -162,7 +162,7 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH ROBUST AUDIO DICTATION
+# USER ANSWERS WITH CORRECT AUDIO HANDLING
 # -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
@@ -180,14 +180,9 @@ if st.session_state["questions"]:
         # Transcribe audio using Whisper if audio is provided
         if audio_data is not None:
             try:
-                # Robust handling for memoryview, bytearray, or bytes
-                if isinstance(audio_data, memoryview):
-                    audio_bytes_io = io.BytesIO(audio_data.tobytes())
-                elif isinstance(audio_data, bytearray):
-                    audio_bytes_io = io.BytesIO(bytes(audio_data))
-                else:
-                    audio_bytes_io = io.BytesIO(audio_data)
-
+                # Read UploadedFile contents for Whisper
+                audio_bytes_io = io.BytesIO(audio_data.read())
+                
                 transcription = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_bytes_io
