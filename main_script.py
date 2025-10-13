@@ -224,7 +224,9 @@ if st.session_state["questions"]:
 
         # Keep session_state["user_answers"] synced
         st.session_state["user_answers"][i] = current_text
-
+        
+    st.session_state["user_answers"] = user_answers
+    
     # -------------------------------
     # EVALUATION
     # -------------------------------
