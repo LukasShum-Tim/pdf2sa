@@ -92,7 +92,7 @@ if 'questions' in st.session_state:
 if 'questions' in st.session_state and st.button(translate("Evaluate Answers / Évaluer les réponses")):
     st.write(translate("Evaluation / Évaluation:"))
     for i, question in enumerate(st.session_state.questions):
-        llm = ChatOpenAI(model_name="gpt-4", temperature=0)
+        llm = ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
         eval_prompt = f"Question: {question}\nStudent Answer: {st.session_state.answers[i]}\nProvide a concise model answer."
         response = llm.predict(eval_prompt)
         st.markdown(f"**Q{i+1} Model Answer / Réponse modèle:** {translate(response)}")
