@@ -169,7 +169,9 @@ if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
-    user_answers = st.session_state.get("user_answers", [""] * len(questions))
+    if "user_answers" not in st.session_state or len(st.session_state["user_answers"]) != len(questions):
+        st.session_state["user_answers"] = [""] * len(questions)
+    user_answers = st.session_state["user_answers"]
 
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
