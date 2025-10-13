@@ -182,15 +182,15 @@ if st.session_state["questions"]:
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
         # --- Audio input with Whisper transcription ---
-        st.markdown(bilingual_text("🎤 Dictate your answer:"))
+        st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
         audio_data = st.audio_input("", key=f"audio_input_{i}")
 
-        transcribed_key = f"transcribed_{i}"
-        if transcribed_key not in st.session_state:
-            st.session_state[transcribed_key] = False
+        # Maintain a list of past transcriptions for each question
+        transcriptions_key = f"transcriptions_{i}"
+        if transcriptions_key not in st.session_state:
+            st.session_state[transcriptions_key] = []
 
-        # Handle new audio input
-        if audio_data is not None and not st.session_state[transcribed_key]:
+        if audio_data is not None:
             try:
                 with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
                     tmp_file.write(audio_data.read())
@@ -205,12 +205,17 @@ if st.session_state["questions"]:
 
                 text_out = getattr(transcription, "text", "").strip()
                 if text_out:
-                    # ✅ Inject directly into Streamlit's widget state
-                    st.session_state[f"ans_{i}"] = text_out
-                    st.session_state["user_answers"][i] = text_out
-                    st.session_state[transcribed_key] = True
+                    # ✅ Append the new transcription to the list
+                    st.session_state[transcriptions_key].append(text_out)
 
-                    st.toast(bilingual_text("🎧 Transcription complete — added to answer box."), icon="🎤")
+                    # Combine all transcriptions into a single answer
+                    combined_text = " ".join(st.session_state[transcriptions_key])
+
+                    # Update text area and session state
+                    st.session_state[f"ans_{i}"] = combined_text
+                    st.session_state["user_answers"][i] = combined_text
+
+                    st.toast(bilingual_text("🎧 New recording transcribed and added to answer box."), icon="🎤")
                     time.sleep(0.3)
                     st.rerun()
 
