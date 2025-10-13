@@ -11,10 +11,15 @@ import time
 client = OpenAI()
 translator = Translator()
 
-# Check if 'key' already exists in session_state
-# If not, then initialize it
-if 'key' not in st.session_state:
-    st.session_state['key'] = 'value'
+st.title('Counter Example')
+if 'count' not in st.session_state:
+    st.session_state.count = 0
+
+increment = st.button('Increment')
+if increment:
+    st.session_state.count += 1
+
+st.write('Count = ', st.session_state.count)
 
 # Session State also supports the attribute based syntax
 if 'key' not in st.session_state:
