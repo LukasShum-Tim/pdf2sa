@@ -208,11 +208,15 @@ if st.session_state["questions"]:
                     # ✅ Inject directly into Streamlit's widget state
                     st.session_state[f"ans_{i}"] = text_out
                     st.session_state["user_answers"][i] = text_out
-                    st.session_state[transcribed_key] = True
-
-                    st.toast(bilingual_text("🎧 Transcription complete — added to answer box."), icon="🎤")
+                
+                    # ✅ Reset the transcribed flag and audio input so the user can re-record
+                    st.session_state[transcribed_key] = False
+                    st.session_state[f"audio_input_{i}"] = None
+                
+                    st.toast(bilingual_text("🎧 Transcription complete — added to answer box. Ready for next recording."), icon="🎤")
                     time.sleep(0.3)
                     st.rerun()
+
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
