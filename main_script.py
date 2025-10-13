@@ -5,8 +5,6 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-import tempfile
-import os
 import speech_recognition as sr
 
 # ----------------- UI -----------------
@@ -14,7 +12,8 @@ st.set_page_config(page_title="Oral Exam Generator", layout="wide")
 st.title("📄 Royal College-style Oral Exam Generator")
 
 # Language selection
-language = st.selectbox("Select your language / Seleccione su idioma:", ["English", "French", "Spanish", "German", "Portuguese", "Chinese"])
+language = st.selectbox("Select your language / Seleccione su idioma:", 
+                        ["English", "French", "Spanish", "German", "Portuguese", "Chinese"])
 
 # Translation helper
 def translate(text, target_lang):
@@ -27,31 +26,45 @@ def translate(text, target_lang):
 
 # ----------------- PDF Upload -----------------
 uploaded_file = st.file_uploader(translate("Upload your PDF file", language), type=["pdf"])
+
 if uploaded_file:
     with pdfplumber.open(uploaded_file) as pdf:
         text = "\n".join([page.extract_text() or "" for page in pdf.pages])
-    
+
     st.success(translate("PDF successfully processed!", language))
 
-    # ----------------- Question Generation -----------------
-    num_questions = st.number_input(translate("Number of oral exam questions to generate:", language), min_value=1, max_value=50, value=5, step=1)
+    # ----------------- Split and Vectorize -----------------
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    chunks = text_splitter.split_text(text)
     
+    embeddings = OpenAIEmbeddings()
+    vectorstore = FAISS.from_texts(chunks, embeddings)
+
+    st.session_state['vectorstore'] = vectorstore
+
+    # ----------------- Question Generation -----------------
+    num_questions = st.number_input(translate("Number of oral exam questions to generate:", language), 
+                                    min_value=1, max_value=50, value=5, step=1)
+
     if st.button(translate("Generate Questions", language)):
-        with st.spinner(translate("Generating questions...", language)):
-            llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
-            
-            prompt = f"""
-            You are an expert examiner. Generate {num_questions} Royal College-style oral exam questions from the following text. 
-            Provide only the question text.
-            Text: {text}
-            """
-            response = llm.predict(prompt)
-            questions = [q.strip() for q in response.split("\n") if q.strip()]
-        
+        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
+
+        # Retrieve relevant chunks first
+        docs = vectorstore.similarity_search("Generate exam questions", k=min(5, len(chunks)))
+        context_text = " ".join([d.page_content for d in docs])
+
+        prompt = f"""
+        You are an expert examiner. Generate {num_questions} Royal College-style oral exam questions from the following text. 
+        Provide only the question text.
+        Text: {context_text}
+        """
+        response = llm.predict(prompt)
+        questions = [q.strip() for q in response.split("\n") if q.strip()]
+
         st.session_state['questions'] = questions
         st.session_state['answers'] = [""] * len(questions)
         st.session_state['scores'] = [None] * len(questions)
-    
+
 # ----------------- Display Questions -----------------
 if 'questions' in st.session_state:
     st.subheader(translate("Answer the following questions:", language))
@@ -63,7 +76,7 @@ if 'questions' in st.session_state:
             value=st.session_state['answers'][i], 
             key=f"answer_{i}", height=100
         )
-        
+
         # Voice input
         if st.button(translate("🎤 Dictate Answer", language), key=f"voice_{i}"):
             r = sr.Recognizer()
@@ -84,15 +97,5 @@ if 'questions' in st.session_state:
             prompt_eval = f"""
             You are an examiner. Evaluate the following answer on a 2-point scale (0, 1, 2) according to Royal College standards.
             Question: {q}
-            Student Answer: {st.session_state['answers'][i]}
-            Respond ONLY with the score and a brief justification.
-            """
-            eval_response = llm.predict(prompt_eval)
-            st.session_state['scores'][i] = eval_response
-        
-        st.success(translate("Evaluation completed!", language))
-    
-    # ----------------- Show Scores -----------------
-    for i, score in enumerate(st.session_state.get('scores', [])):
-        if score:
-            st.markdown(f"**Q{i+1} Score:** {score}")
+            Student Answer: {st.sessi
+
