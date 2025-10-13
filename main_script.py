@@ -159,7 +159,7 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH VOICE (st.audio_input)
+# USER ANSWERS WITH AUDIO INPUT
 # -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions (Type or Speak)"))
@@ -171,22 +171,21 @@ if st.session_state["questions"]:
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
-        # Text input area
+        # Text input
         user_answers[i] = st.text_area(
             bilingual_text("✏️ Your Answer:"), 
             value=user_answers[i], height=80, key=f"ans_{i}"
         )
 
-        # Voice recording using st.audio_input
+        # Audio input using st.audio_input
         st.markdown("**🎤 Record your answer (optional):**")
-        audio_bytes = st.audio_input(key=f"audio_{i}")  # Returns bytes
-        if audio_bytes:
+        audio_data = st.audio_input(key=f"audio_{i}")  # Returns BytesIO
+
+        if audio_data is not None:
             try:
-                # Wrap bytes into BytesIO for OpenAI
-                audio_file = BytesIO(audio_bytes)
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
-                    file=audio_file
+                    file=audio_data
                 )
                 user_answers[i] = transcript.text  # Populate text area
                 st.success(bilingual_text("🎤 Voice transcribed to text!"))
