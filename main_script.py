@@ -7,6 +7,8 @@ import time
 import tempfile
 import io
 import hashlib
+import os
+import re
 
 # -------------------------------
 # INITIALIZATION
@@ -40,8 +42,11 @@ if "evaluations" not in st.session_state:
 # -------------------------------
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_code):
-    """Translate text safely with fallback to GPT."""
+    """Translate text safely with fallback to GPT and skip English."""
     if not text or not text.strip():
+        return text
+    # ✅ Skip translation for English
+    if target_language_code == "en":
         return text
     try:
         translated = translator.translate(text, dest=target_language_code)
@@ -82,101 +87,32 @@ language_map = {
     'Chichewa': 'ny',
     'Chinese (Simplified)': 'zh-cn',
     'Chinese (Traditional)': 'zh-tw',
-    'Corsican': 'co',
     'Croatian': 'hr',
     'Czech': 'cs',
     'Danish': 'da',
     'Dutch': 'nl',
-    'Esperanto': 'eo',
-    'Estonian': 'et',
-    'Filipino': 'tl',
-    'Finnish': 'fi',
     'French': 'fr',
-    'Frisian': 'fy',
-    'Galician': 'gl',
-    'Georgian': 'ka',
     'German': 'de',
     'Greek': 'el',
-    'Gujarati': 'gu',
-    'Haitian Creole': 'ht',
-    'Hausa': 'ha',
-    'Hawaiian': 'haw',
-    'Hebrew': 'he',
     'Hindi': 'hi',
-    'Hmong': 'hmn',
-    'Hungarian': 'hu',
-    'Icelandic': 'is',
-    'Igbo': 'ig',
-    'Indonesian': 'id',
-    'Irish': 'ga',
     'Italian': 'it',
     'Japanese': 'ja',
-    'Javanese': 'jw',
-    'Kannada': 'kn',
-    'Kazakh': 'kk',
-    'Khmer': 'km',
     'Korean': 'ko',
-    'Kurdish (Kurmanji)': 'ku',
-    'Kyrgyz': 'ky',
-    'Lao': 'lo',
-    'Latin': 'la',
-    'Latvian': 'lv',
-    'Lithuanian': 'lt',
-    'Luxembourgish': 'lb',
-    'Macedonian': 'mk',
-    'Malagasy': 'mg',
-    'Malay': 'ms',
-    'Malayalam': 'ml',
-    'Maltese': 'mt',
-    'Maori': 'mi',
-    'Marathi': 'mr',
-    'Mongolian': 'mn',
-    'Myanmar (Burmese)': 'my',
-    'Nepali': 'ne',
-    'Norwegian': 'no',
-    'Odia': 'or',
-    'Pashto': 'ps',
-    'Persian': 'fa',
-    'Polish': 'pl',
     'Portuguese': 'pt',
-    'Punjabi': 'pa',
-    'Romanian': 'ro',
     'Russian': 'ru',
-    'Samoan': 'sm',
-    'Scots Gaelic': 'gd',
-    'Serbian': 'sr',
-    'Sesotho': 'st',
-    'Shona': 'sn',
-    'Sindhi': 'sd',
-    'Sinhala': 'si',
-    'Slovak': 'sk',
-    'Slovenian': 'sl',
-    'Somali': 'so',
     'Spanish': 'es',
-    'Sundanese': 'su',
-    'Swahili': 'sw',
     'Swedish': 'sv',
-    'Tajik': 'tg',
-    'Tamil': 'ta',
-    'Telugu': 'te',
-    'Thai': 'th',
     'Turkish': 'tr',
-    'Ukrainian': 'uk',
-    'Urdu': 'ur',
-    'Uyghur': 'ug',
-    'Uzbek': 'uz',
-    'Vietnamese': 'vi',
-    'Welsh': 'cy',
-    'Xhosa': 'xh',
-    'Yiddish': 'yi',
-    'Yoruba': 'yo',
-    'Zulu': 'zu',
+    'Vietnamese': 'vi'
 }
+
 target_language_name = st.selectbox("🌍 Select your language:", list(language_map.keys()), index=0)
 target_lang_code = language_map[target_language_name]
 
 def bilingual_text(en_text):
-    """Display English + Translated text together."""
+    """Display English + translated text, unless English is selected."""
+    if target_lang_code == "en":
+        return en_text
     translated = safe_translate(en_text, target_lang_code)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
@@ -208,14 +144,14 @@ if pdf_text:
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
-        # Limit text size for speed
         trimmed_text = pdf_text[:4000]
         time.sleep(0.2)
         progress.progress(10, text=bilingual_text("Preparing content..."))
 
         prompt = f"""
 You are an expert medical educator.
-Generate {num_questions} concise short-answer questions and their answer keys based on the following content. Focus on clinically relevant key facts.
+Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
+Focus on clinically relevant key facts.
 Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
 If the text refers to case numbers, do not add that information in the questions.
 
@@ -230,11 +166,13 @@ SOURCE TEXT:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
+                model="gpt-4o-mini",  # ✅ lighter, faster model
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7
             )
             raw = response.choices[0].message.content.strip()
+            # ✅ Clean JSON fences if present
+            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
             questions = json.loads(raw)
             progress.progress(40, text=bilingual_text("Translating questions..."))
 
@@ -268,7 +206,6 @@ if st.session_state["questions"]:
 
     questions = st.session_state["questions"]
 
-    # Ensure stable structure in session_state
     if "user_answers" not in st.session_state or len(st.session_state["user_answers"]) != len(questions):
         st.session_state["user_answers"] = [""] * len(questions)
 
@@ -278,80 +215,56 @@ if st.session_state["questions"]:
 
         st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
         audio_data = st.audio_input("", key=f"audio_input_{i}")
-        
-        # Initialize storage structures
+
         transcriptions_key = f"transcriptions_{i}"
         last_hash_key = f"last_audio_hash_{i}"
         if transcriptions_key not in st.session_state:
             st.session_state[transcriptions_key] = []
         if last_hash_key not in st.session_state:
             st.session_state[last_hash_key] = None
-        
+
         if audio_data is not None:
             try:
-                # Read bytes (this consumes the stream)
-                audio_bytes = audio_data.read()
-        
-                # Create a short fingerprint for this audio blob
+                audio_bytes = audio_data.getvalue()  # ✅ safer than .read()
                 audio_hash = hashlib.sha256(audio_bytes).hexdigest()
-        
-                # If we've already processed this exact audio blob, skip it
+
                 if st.session_state.get(last_hash_key) == audio_hash:
-                    # Optionally inform the user that this recording was already processed
                     st.info(bilingual_text("This recording was already transcribed. Record again to add more."), icon="ℹ️")
                 else:
-                    # Save to temp file for Whisper API (some APIs accept file-like objects,
-                    # but saving to a temp file is safe and consistent)
                     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
                         tmp_file.write(audio_bytes)
                         tmp_path = tmp_file.name
-        
-                    # Transcribe using Whisper
+
                     with open(tmp_path, "rb") as f:
                         transcription = client.audio.transcriptions.create(
                             model="whisper-1",
                             file=f
                         )
-        
-                    # Clean up the temp file
+
                     try:
                         os.remove(tmp_path)
                     except Exception:
                         pass
-        
+
                     text_out = getattr(transcription, "text", "").strip()
                     if text_out:
-                        # Append the newest transcription to the list for this question
                         st.session_state[transcriptions_key].append(text_out)
-        
-                        # Combine all transcriptions for display/storage
                         combined_text = " ".join(st.session_state[transcriptions_key])
-        
-                        # Update the answer text area (Streamlit will persist this in the next rerun)
                         st.session_state[f"ans_{i}"] = combined_text
                         st.session_state["user_answers"][i] = combined_text
-        
-                        # Remember this audio blob's hash so we don't reprocess it
                         st.session_state[last_hash_key] = audio_hash
-        
-                        # Notify user (no st.rerun())
                         st.success(bilingual_text("🎧 New recording transcribed and appended to your answer."), icon="🎤")
                     else:
                         st.warning(bilingual_text("⚠️ Transcription returned empty text."))
-
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
-    
-        # --- Text area (bound directly to Streamlit widget state) ---
-        label = bilingual_text("✏️ Your Answer:")
-        # ⚡ Remove the value= parameter to let Streamlit persist edits/transcriptions
-        current_text = st.text_area(label, height=80, key=f"ans_{i}")
 
-        # Keep session_state["user_answers"] synced
+        label = bilingual_text("✏️ Your Answer:")
+        current_text = st.text_area(label, height=80, key=f"ans_{i}")
         st.session_state["user_answers"][i] = current_text
-        
+
     user_answers = st.session_state.get("user_answers", [])
-    
+
     # -------------------------------
     # EVALUATION
     # -------------------------------
@@ -376,11 +289,13 @@ QUESTIONS AND RESPONSES:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": grading_prompt}],
                 temperature=0
             )
-            results = json.loads(response.choices[0].message.content)
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+            results = json.loads(raw)
             for r in results:
                 r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
                 r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
@@ -393,6 +308,7 @@ QUESTIONS AND RESPONSES:
         with st.spinner(bilingual_text("Evaluating your answers...")):
             results = score_short_answers(user_answers, questions)
             st.session_state['evaluations'] = results
+
         if results:
             st.success(bilingual_text("✅ Evaluation complete!"))
             with st.expander(bilingual_text("📊 Detailed Feedback")):
