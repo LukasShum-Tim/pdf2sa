@@ -3,9 +3,9 @@ import json
 import pymupdf as fitz  # PyMuPDF
 from openai import OpenAI
 from googletrans import Translator
-import io
 import time
 import tempfile
+import io
 
 # -------------------------------
 # INITIALIZATION
@@ -163,7 +163,7 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH FIXED AUDIO HANDLING
+# USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
@@ -174,11 +174,10 @@ if st.session_state["questions"]:
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
-        
-        # Audio input
+
+        # --- Audio input (NEW FEATURE) ---
         audio_data = st.audio_input(bilingual_text("🎤 Dictate your answer:"), key=f"audio_{i}")
-        
-        # Transcribe audio using Whisper if audio is provided
+
         if audio_data is not None:
             try:
                 # Save UploadedFile contents to a temporary .webm file
@@ -192,14 +191,23 @@ if st.session_state["questions"]:
                         model="whisper-1",
                         file=f
                     )
-                user_answers[i] = transcription.text
+
+                # Store transcription + update UI
+                st.session_state["user_answers"][i] = transcription.text
+                st.success(bilingual_text("🎧 Transcription complete — text added below."))
+                st.experimental_rerun()
 
             except Exception as e:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
-        # Text area (pre-filled with typed or transcribed text)
+        # Text area (auto-updates with transcribed or typed text)
         label = bilingual_text("✏️ Your Answer:")
-        user_answers[i] = st.text_area(label, value=user_answers[i], height=80, key=f"ans_{i}")
+        user_answers[i] = st.text_area(
+            label,
+            value=st.session_state["user_answers"][i],
+            height=80,
+            key=f"ans_{i}"
+        )
 
     st.session_state["user_answers"] = user_answers
 
@@ -243,7 +251,7 @@ QUESTIONS AND RESPONSES:
     if st.button(bilingual_text("🚀 Evaluate My Answers")):
         with st.spinner(bilingual_text("Evaluating your answers...")):
             results = score_short_answers(user_answers, questions)
-            st.session_state['evaluations'] = results  # store evaluations safely
+            st.session_state['evaluations'] = results
         if results:
             st.success(bilingual_text("✅ Evaluation complete!"))
             with st.expander(bilingual_text("📊 Detailed Feedback")):
@@ -256,4 +264,5 @@ QUESTIONS AND RESPONSES:
                     st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                     st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                     st.markdown("---")
+
 
