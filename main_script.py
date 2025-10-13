@@ -192,7 +192,7 @@ if st.session_state["questions"]:
         # Handle new audio input
         if audio_data is not None and not st.session_state[transcribed_key]:
             try:
-                with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_file:
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
                     tmp_file.write(audio_data.read())
                     tmp_path = tmp_file.name
 
