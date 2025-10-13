@@ -5,22 +5,20 @@ import openai
 import json
 import tempfile
 
-# Initialize translator
-translator = Translator()
-
-# OpenAI API Key
+# -------------------- CONFIG -------------------- #
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.set_page_config(page_title="PDF Question Generator", layout="wide")
+st.set_page_config(page_title="PDF Q&A Generator", layout="wide")
 
-# -------------------- Helper Functions -------------------- #
+translator = Translator()
+
+# -------------------- HELPER FUNCTIONS -------------------- #
 
 def translate_text(text, target_lang):
     if target_lang.lower() == "en":
         return text
     try:
-        translated = translator.translate(text, dest=target_lang.lower())
-        return translated.text
+        return translator.translate(text, dest=target_lang.lower()).text
     except Exception as e:
         st.warning(f"Translation failed: {e}")
         return text
@@ -34,16 +32,18 @@ def extract_text_from_pdf(pdf_file):
 
 def generate_questions(pdf_text, num_questions, target_lang="en"):
     prompt = f"""
-    Generate {num_questions} high-quality questions based on the following text.
-    Return ONLY valid JSON in this exact format:
+    Generate {num_questions} questions and model answers from the following text.
+    Output strictly valid JSON in this format ONLY:
+
     {{
         "questions": [
             {{
-                "question": "Question text here",
-                "answer": "Model answer here"
+                "question": "Question text",
+                "answer": "Answer text"
             }}
         ]
     }}
+
     Text:
     {pdf_text}
     """
@@ -52,21 +52,25 @@ def generate_questions(pdf_text, num_questions, target_lang="en"):
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    raw_json = response.choices[0].message.content.strip()
+    raw_text = response.choices[0].message.content.strip()
 
-    # Ensure JSON parsing
+    # Strip extra text outside JSON
+    start = raw_text.find("{")
+    end = raw_text.rfind("}") + 1
+    json_text = raw_text[start:end]
+
     try:
-        questions_data = json.loads(raw_json)
+        data = json.loads(json_text)
     except Exception as e:
-        st.error(f"Failed to parse questions JSON: {e}\nRaw response: {raw_json}")
+        st.error(f"Failed to parse questions JSON: {e}\nRaw response:\n{raw_text}")
         return []
 
-    # Automatically translate questions to target language
-    for q in questions_data["questions"]:
+    # Translate questions and answers
+    for q in data["questions"]:
         q["question_local"] = translate_text(q["question"], target_lang)
         q["answer_local"] = translate_text(q["answer"], target_lang)
 
-    return questions_data["questions"]
+    return data["questions"]
 
 def evaluate_answer(user_answer, correct_answer):
     prompt = f"""
@@ -80,8 +84,7 @@ def evaluate_answer(user_answer, correct_answer):
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
-    evaluation = response.choices[0].message.content.strip()
-    return evaluation
+    return response.choices[0].message.content.strip()
 
 def transcribe_audio(audio_bytes):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
@@ -95,14 +98,12 @@ def transcribe_audio(audio_bytes):
         )
     return transcript["text"]
 
-# -------------------- Streamlit UI -------------------- #
+# -------------------- UI -------------------- #
 
 st.title("PDF Question Generator & Evaluator")
 
 languages = ["en", "fr", "es", "de", "it", "pt"]
-selected_lang = st.selectbox(
-    "Select your language / Sélectionnez votre langue", languages, index=0
-)
+selected_lang = st.selectbox("Select your language / Sélectionnez votre langue", languages, index=0)
 
 uploaded_pdf = st.file_uploader(
     translate_text("Upload your PDF file / Téléversez votre fichier PDF", selected_lang),
@@ -127,20 +128,16 @@ if 'questions' in st.session_state:
         st.markdown(f"**Q{idx+1} (EN):** {q['question']}")
         st.markdown(f"**Q{idx+1} ({selected_lang.upper()}):** {q['question_local']}")
 
-        # Audio recording
         audio_input = st.audio_input(
             f"Record your answer / Enregistrez votre réponse (Q{idx+1})",
             key=f"audio_{idx}"
         )
 
-        # Initialize text area
         if f"answer_{idx}" not in st.session_state:
             st.session_state[f"answer_{idx}"] = ""
 
-        # Transcribe audio into text box
         if audio_input:
-            audio_bytes = audio_input.read()
-            st.session_state[f"answer_{idx}"] = transcribe_audio(audio_bytes)
+            st.session_state[f"answer_{idx}"] = transcribe_audio(audio_input.read())
 
         user_answer = st.text_area(
             f"Your Answer / Votre réponse (Q{idx+1})",
@@ -155,3 +152,4 @@ if 'questions' in st.session_state:
             st.markdown(f"**Evaluation ({selected_lang.upper()}):** {evaluation_local}")
             st.markdown(f"**Correct Answer (EN):** {q['answer']}")
             st.markdown(f"**Correct Answer ({selected_lang.upper()}):** {q['answer_local']}")
+
