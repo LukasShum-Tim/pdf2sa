@@ -1,104 +1,101 @@
 import streamlit as st
-import pdfplumber
-from deep_translator import GoogleTranslator
-from langchain_community.chat_models import ChatOpenAI
+from PyPDF2 import PdfReader
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-import speech_recognition as sr
+from langchain_community.chat_models import ChatOpenAI
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from deep_translator import GoogleTranslator
+import tempfile
+import os
+from gtts import gTTS
+from io import BytesIO
 
-# ----------------- UI -----------------
-st.set_page_config(page_title="Oral Exam Generator", layout="wide")
-st.title("📄 Royal College-style Oral Exam Generator")
+st.set_page_config(page_title="Royal College Oral Exam AI", layout="wide")
 
-# Language selection
-language = st.selectbox("Select your language / Seleccione su idioma:", 
-                        ["English", "French", "Spanish", "German", "Portuguese", "Chinese"])
+# --- Sidebar ---
+st.sidebar.title("Settings")
+language = st.sidebar.selectbox("Select Language", ["English", "French", "Spanish", "German"])
+num_questions = st.sidebar.slider("Number of Questions", 1, 20, 5)
 
-# Translation helper
-def translate(text, target_lang):
-    if target_lang.lower() == "english":
-        return text
-    try:
-        return GoogleTranslator(source='auto', target=target_lang.lower()).translate(text)
-    except:
-        return text
+# --- Initialize session state ---
+if 'questions' not in st.session_state:
+    st.session_state['questions'] = []
+if 'answers' not in st.session_state:
+    st.session_state['answers'] = []
+if 'evaluations' not in st.session_state:
+    st.session_state['evaluations'] = []
 
-# ----------------- PDF Upload -----------------
-uploaded_file = st.file_uploader(translate("Upload your PDF file", language), type=["pdf"])
+# --- Upload PDF ---
+uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
 if uploaded_file:
-    with pdfplumber.open(uploaded_file) as pdf:
-        text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        tmp_file.write(uploaded_file.read())
+        pdf_path = tmp_file.name
 
-    st.success(translate("PDF successfully processed!", language))
+    # --- Read PDF efficiently ---
+    reader = PdfReader(pdf_path)
+    text = "\n".join([page.extract_text() or "" for page in reader.pages])
 
-    # ----------------- Split and Vectorize -----------------
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    chunks = text_splitter.split_text(text)
-    
+    # --- Vectorstore for faster retrieval ---
     embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.from_texts(chunks, embeddings)
+    vectorstore = FAISS.from_texts([text], embeddings)
 
-    st.session_state['vectorstore'] = vectorstore
-
-    # ----------------- Question Generation -----------------
-    num_questions = st.number_input(translate("Number of oral exam questions to generate:", language), 
-                                    min_value=1, max_value=50, value=5, step=1)
-
-    if st.button(translate("Generate Questions", language)):
-        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7)
-
-        # Retrieve relevant chunks first
-        docs = vectorstore.similarity_search("Generate exam questions", k=min(5, len(chunks)))
-        context_text = " ".join([d.page_content for d in docs])
-
-        answer_text = st.session_state['answers'][i].replace("{", "{{").replace("}", "}}")
-
-      
-        prompt = f"""
-        You are an expert examiner. Generate {num_questions} Royal College-style oral exam questions from the following text. 
-        Provide only the question text.
-        Text: {context_text}
-        """
-        response = llm.predict(prompt)
-        questions = [q.strip() for q in response.split("\n") if q.strip()]
-
-        st.session_state['questions'] = questions
-        st.session_state['answers'] = [""] * len(questions)
-        st.session_state['scores'] = [None] * len(questions)
-
-# ----------------- Display Questions -----------------
-if 'questions' in st.session_state:
-    st.subheader(translate("Answer the following questions:", language))
+    # --- Generate questions ---
+    llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+    prompt_template = PromptTemplate(
+        input_variables=["content", "num_questions"],
+        template="Create {num_questions} Royal College-style oral exam questions based on the following content:\n{content}"
+    )
+    chain = LLMChain(llm=llm, prompt=prompt_template)
+    raw_questions = chain.run(content=text, num_questions=num_questions)
     
+    # Split questions into list
+    questions_list = [q.strip() for q in raw_questions.split("\n") if q.strip()]
+    st.session_state['questions'] = questions_list[:num_questions]
+    st.session_state['answers'] = [""] * len(st.session_state['questions'])
+    st.session_state['evaluations'] = [""] * len(st.session_state['questions'])
+    
+    os.unlink(pdf_path)
+
+# --- Display questions & answer input ---
+for i, q in enumerate(st.session_state['questions']):
+    # Translate question if necessary
+    display_q = GoogleTranslator(source='auto', target=language.lower()).translate(q) if language != "English" else q
+    st.markdown(f"**Question {i+1}:** {display_q}")
+    
+    # Text input for answer
+    st.session_state['answers'][i] = st.text_area(f"Answer {i+1}", st.session_state['answers'][i], key=f"answer_{i}")
+
+    # Optional: Text-to-speech button
+    tts_button = st.button(f"Dictate Answer {i+1}", key=f"tts_{i}")
+    if tts_button and st.session_state['answers'][i]:
+        tts = gTTS(text=st.session_state['answers'][i], lang=language[:2].lower())
+        audio_bytes = BytesIO()
+        tts.write_to_fp(audio_bytes)
+        st.audio(audio_bytes.getvalue(), format="audio/mp3")
+
+# --- Evaluate answers ---
+if st.button("Evaluate Answers"):
     for i, q in enumerate(st.session_state['questions']):
-        st.markdown(f"**Q{i+1}:** {translate(q, language)}")
-        st.session_state['answers'][i] = st.text_area(
-            translate("Your answer:", language), 
-            value=st.session_state['answers'][i], 
-            key=f"answer_{i}", height=100
-        )
+        # Escape any curly braces in the answer to avoid f-string errors
+        answer_text = st.session_state['answers'][i].replace("{", "{{").replace("}", "}}")
+        
+        prompt_eval = f"""
+You are an examiner. Evaluate the following answer on a 2-point scale (0, 1, 2) according to Royal College standards.
+Question: {q}
+Student Answer: {answer_text}
+Respond ONLY with the score and a brief justification.
+"""
+        eval_result = llm(prompt_eval)
+        # Translate evaluation if necessary
+        eval_display = GoogleTranslator(source='auto', target=language.lower()).translate(eval_result) if language != "English" else eval_result
+        st.session_state['evaluations'][i] = eval_display
 
-        # Voice input
-        if st.button(translate("🎤 Dictate Answer", language), key=f"voice_{i}"):
-            r = sr.Recognizer()
-            with sr.Microphone() as source:
-                st.info(translate("Listening...", language))
-                audio = r.listen(source)
-            try:
-                transcription = r.recognize_google(audio, language=language[:2].lower())
-                st.session_state['answers'][i] = transcription
-                st.success(translate("Answer transcribed successfully!", language))
-            except:
-                st.error(translate("Could not transcribe audio.", language))
-    
-    # ----------------- Evaluate Answers -----------------
-    if st.button(translate("Evaluate Answers", language)):
-        llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
-        for i, q in enumerate(st.session_state['questions']):
-            prompt_eval = f"""
-            You are an examiner. Evaluate the following answer on a 2-point scale (0, 1, 2) according to Royal College standards.
-            Question: {q}
-            Student Answer: {st.sessi
+# --- Display evaluations ---
+for i, evaluation in enumerate(st.session_state['evaluations']):
+    if evaluation:
+        st.markdown(f"**Evaluation {i+1}:** {evaluation}")
+
 
