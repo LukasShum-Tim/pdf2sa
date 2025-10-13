@@ -7,12 +7,6 @@ import time
 from io import BytesIO
 
 # -------------------------------
-# OPTIONAL: For voice recording in Streamlit
-# pip install streamlit-webrtc
-from streamlit_webrtc import webrtc_streamer, AudioProcessorBase, WebRtcMode
-import av
-
-# -------------------------------
 # INITIALIZATION
 # -------------------------------
 client = OpenAI()
@@ -44,7 +38,6 @@ if "evaluations" not in st.session_state:
 # -------------------------------
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_code):
-    """Translate text safely with fallback to GPT."""
     if not text or not text.strip():
         return text
     try:
@@ -84,7 +77,6 @@ target_language_name = st.selectbox("🌍 Select your language:", list(language_
 target_lang_code = language_map[target_language_name]
 
 def bilingual_text(en_text):
-    """Display English + Translated text together."""
     translated = safe_translate(en_text, target_lang_code)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
@@ -167,7 +159,7 @@ SOURCE TEXT:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
 # -------------------------------
-# USER ANSWERS WITH VOICE
+# USER ANSWERS WITH VOICE (st.audio_input)
 # -------------------------------
 if st.session_state["questions"]:
     st.subheader(bilingual_text("🧠 Step 2: Answer the Questions (Type or Speak)"))
@@ -175,50 +167,31 @@ if st.session_state["questions"]:
     questions = st.session_state["questions"]
     user_answers = st.session_state.get("user_answers", [""] * len(questions))
 
-    # Voice transcription processor
-    class AudioProcessor(AudioProcessorBase):
-        def __init__(self):
-            self.audio_buffer = BytesIO()
-        def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
-            pcm = frame.to_ndarray()
-            self.audio_buffer.write(pcm.tobytes())
-            return frame
-
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
-        label = bilingual_text("✏️ Your Answer:")
-        
-        # Text input area
-        user_answers[i] = st.text_area(label, value=user_answers[i], height=80, key=f"ans_{i}")
 
-        # Voice recorder
-        st.markdown("**🎤 Record your answer (optional):**")
-        webrtc_ctx = webrtc_streamer(
-            key=f"recorder_{i}",
-            mode=WebRtcMode.SENDONLY,
-            audio_processor_factory=AudioProcessor,
-            media_stream_constraints={"audio": True, "video": False},
-            async_processing=True
+        # Text input area
+        user_answers[i] = st.text_area(
+            bilingual_text("✏️ Your Answer:"), 
+            value=user_answers[i], height=80, key=f"ans_{i}"
         )
 
-        if webrtc_ctx and webrtc_ctx.audio_receiver:
-            audio_frames = webrtc_ctx.audio_receiver.get_frames(timeout=1)
-            if audio_frames:
-                # Concatenate frames into bytes
-                audio_bytes = b"".join([f.to_ndarray().tobytes() for f in audio_frames])
-                # Transcribe using OpenAI
-                try:
-                    audio_file = BytesIO(audio_bytes)
-                    transcript = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=audio_file
-                    )
-                    # Append or replace text area content
-                    user_answers[i] = transcript.text
-                    st.success(bilingual_text("🎤 Voice transcribed to text!"))
-                except Exception as e:
-                    st.error(bilingual_text(f"⚠️ Voice transcription failed: {e}"))
+        # Voice recording using st.audio_input
+        st.markdown("**🎤 Record your answer (optional):**")
+        audio_bytes = st.audio_input(key=f"audio_{i}")  # Returns bytes
+        if audio_bytes:
+            try:
+                # Wrap bytes into BytesIO for OpenAI
+                audio_file = BytesIO(audio_bytes)
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file
+                )
+                user_answers[i] = transcript.text  # Populate text area
+                st.success(bilingual_text("🎤 Voice transcribed to text!"))
+            except Exception as e:
+                st.error(bilingual_text(f"⚠️ Voice transcription failed: {e}"))
 
     st.session_state["user_answers"] = user_answers
 
@@ -273,6 +246,7 @@ if st.button(bilingual_text("🚀 Evaluate My Answers")):
                 st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
                 st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
                 st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
-                st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
+                st.markdown(f"**Model Answer ({target_language_name}): {r.get('model_answer_translated', '')}**")
                 st.markdown("---")
+
 
