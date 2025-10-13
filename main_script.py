@@ -1,14 +1,14 @@
 import streamlit as st
 from openai import OpenAI
 import tempfile
-import pymupdf as fitz  # PyMuPDF for PDF parsing
+import pymupdf as fitz  # PyMuPDF
 
 # -------------------------------------------------------
-# SETUP
+# APP CONFIG
 # -------------------------------------------------------
 st.set_page_config(page_title="AI Oral Board Trainer", layout="wide")
 st.title("🎙️ AI Oral Board Trainer")
-st.write("Upload a PDF, generate bilingual short-answer questions, and practice oral responses with feedback.")
+st.write("Upload a PDF to generate bilingual oral board questions and record your answers for automated feedback.")
 
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
@@ -20,9 +20,8 @@ LANGUAGES = [
 ]
 user_language = st.selectbox("🌐 Select your language", options=LANGUAGES, index=0)
 
-
 # -------------------------------------------------------
-# TRANSLATION FUNCTION
+# TRANSLATION
 # -------------------------------------------------------
 def translate_text(text, target_language):
     if target_language == "English":
@@ -36,17 +35,15 @@ def translate_text(text, target_language):
     )
     return response.choices[0].message.content.strip()
 
-
 # -------------------------------------------------------
-# PDF EXTRACTION
+# PDF TEXT EXTRACTION
 # -------------------------------------------------------
 def extract_text_from_pdf(pdf_file):
     text = ""
     with fitz.open(stream=pdf_file.read(), filetype="pdf") as doc:
         for page in doc:
             text += page.get_text()
-    return text[:6000]  # Limit length for performance
-
+    return text[:6000]  # Limit to manageable length
 
 # -------------------------------------------------------
 # QUESTION GENERATION
@@ -55,7 +52,7 @@ def generate_questions(pdf_text, target_language):
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": f"You are a bilingual trauma surgery educator. Generate 5 short-answer questions and ideal answers based on the provided text."},
+            {"role": "system", "content": "You are a bilingual trauma surgery educator. Create 5 short-answer oral board questions and their ideal answers."},
             {"role": "user", "content": pdf_text},
         ],
     )
@@ -63,9 +60,8 @@ def generate_questions(pdf_text, target_language):
     translated_output = translate_text(english_output, target_language)
     return english_output, translated_output
 
-
 # -------------------------------------------------------
-# AUDIO TRANSCRIPTION
+# AUDIO TRANSCRIPTION (new OpenAI API syntax)
 # -------------------------------------------------------
 def transcribe_audio(audio_bytes):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
@@ -78,23 +74,22 @@ def transcribe_audio(audio_bytes):
             )
     return transcript.text.strip()
 
-
 # -------------------------------------------------------
-# ANSWER EVALUATION
+# ANSWER EVALUATION (partial credit, bilingual)
 # -------------------------------------------------------
 def evaluate_answer(question, expected_answer, user_answer, language):
     prompt = f"""
 You are an experienced trauma examiner fluent in {language}.
-Evaluate the following answer. Provide partial credit and feedback in {language}.
+Evaluate the following answer. Give partial credit when appropriate.
 
 Question: {question}
 Expected answer: {expected_answer}
 User's answer: {user_answer}
 
-Return:
-1. A numeric score out of 10 (partial credit allowed)
-2. A short paragraph of feedback in {language}
-3. A one-line summary of what was missing
+Return in {language}:
+1. A numeric score out of 10 (allow partial credit)
+2. A short paragraph of feedback
+3. One sentence describing what was missing
 """
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -102,9 +97,8 @@ Return:
     )
     return response.choices[0].message.content.strip()
 
-
 # -------------------------------------------------------
-# PDF UPLOAD AND QUESTION GENERATION
+# MAIN APP
 # -------------------------------------------------------
 st.markdown("### 📘 Upload a PDF to Generate Questions")
 uploaded_pdf = st.file_uploader("Upload your source PDF file", type=["pdf"])
@@ -114,44 +108,51 @@ if uploaded_pdf:
         pdf_text = extract_text_from_pdf(uploaded_pdf)
         q_en, q_translated = generate_questions(pdf_text, user_language)
     st.success("✅ Questions generated!")
-    st.markdown(f"**Questions in English:**\n\n{q_en}")
-    st.markdown(f"**Questions in {user_language}:**\n\n{q_translated}")
 
-    st.markdown("---")
+    st.markdown("### 🧾 Generated Questions")
+    st.markdown(f"**English:**\n\n{q_en}")
+    st.markdown(f"**{user_language}:**\n\n{q_translated}")
+    st.divider()
 
-    # Ask user one sample question
-    st.markdown(f"### 🩺 Practice a Question ({user_language})")
-    sample_question = translate_text("Describe the management of hemorrhagic shock.", user_language)
-    st.info(sample_question)
+    # Split questions and answers into pairs (rough heuristic)
+    question_blocks = [q for q in q_en.split("\n") if q.strip()][:5]
 
-    # Audio input
-    st.markdown(f"#### 🎤 Record or Upload Your Answer ({user_language})")
-    audio_file = st.audio_input(f"Click below to record or upload your answer ({user_language})")
+    st.markdown(f"### 🩺 Practice ({user_language})")
 
-    user_transcript = ""
+    for i, question_text in enumerate(question_blocks, 1):
+        translated_q = translate_text(question_text, user_language)
+        st.markdown(f"#### Question {i}:")
+        st.info(f"{translated_q}")
 
-    if audio_file:
-        audio_bytes = audio_file.read()
-        with st.spinner("🎧 Transcribing your audio..."):
-            try:
-                user_transcript = transcribe_audio(audio_bytes)
-                user_transcript = translate_text(user_transcript, user_language)
-                st.success("✅ Audio transcribed successfully. You can review and edit below.")
-            except Exception as e:
-                st.error(f"Transcription failed: {e}")
+        # Audio input for each question
+        st.markdown(f"🎙️ Record or upload your answer ({user_language})")
+        audio_file = st.audio_input(f"Record answer for Question {i}")
 
-    user_answer = st.text_area(
-        f"✍️ Type or edit your answer in {user_language}:",
-        value=user_transcript,
-        height=200,
-    )
+        user_transcript = ""
+        if audio_file:
+            audio_bytes = audio_file.read()
+            with st.spinner(f"🎧 Transcribing your answer for Question {i}..."):
+                try:
+                    user_transcript = transcribe_audio(audio_bytes)
+                    user_transcript = translate_text(user_transcript, user_language)
+                    st.success(f"✅ Audio transcribed for Question {i}")
+                except Exception as e:
+                    st.error(f"Transcription failed: {e}")
 
-    if st.button("🧠 Evaluate My Answer"):
-        if not user_answer.strip():
-            st.warning("Please provide an answer before evaluation.")
-        else:
-            with st.spinner("Evaluating your answer..."):
-                feedback = evaluate_answer(sample_question, "Control airway, restore circulation, and stop bleeding.", user_answer, user_language)
-            st.markdown("### 🧾 Feedback")
-            st.write(feedback)
+        # Textbox for editing or typing the answer
+        user_answer = st.text_area(
+            f"✍️ Your answer in {user_language} (Question {i}):",
+            value=user_transcript,
+            height=150,
+        )
 
+        # Evaluate button for each question
+        if st.button(f"🧠 Evaluate Question {i}"):
+            if not user_answer.strip():
+                st.warning("Please provide an answer before evaluation.")
+            else:
+                with st.spinner("Evaluating your answer..."):
+                    feedback = evaluate_answer(translated_q, "Provide evidence-based trauma management.", user_answer, user_language)
+                st.markdown("**🧾 Feedback:**")
+                st.write(feedback)
+        st.divider()
