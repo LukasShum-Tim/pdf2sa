@@ -11,6 +11,15 @@ import time
 client = OpenAI()
 translator = Translator()
 
+# Check if 'key' already exists in session_state
+# If not, then initialize it
+if 'key' not in st.session_state:
+    st.session_state['key'] = 'value'
+
+# Session State also supports the attribute based syntax
+if 'key' not in st.session_state:
+    st.session_state.key = 'value'
+
 st.set_page_config(
     page_title="📘 Multilingual Short-Answer Trainer",
     page_icon="🧠",
