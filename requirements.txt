@@ -6,3 +6,6 @@ numpy
 googletrans
 tiktoken
 audiorecorder
+gtts
+pydub
+requests
