@@ -179,8 +179,9 @@ if st.session_state["questions"]:
         
         # Transcribe audio using Whisper if audio is provided
         if audio_data is not None:
-            audio_bytes = io.BytesIO(audio_data)  # Convert to BytesIO
             try:
+                # Convert to bytes explicitly to avoid TypeError
+                audio_bytes = io.BytesIO(bytes(audio_data))
                 transcription = client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_bytes
@@ -248,3 +249,4 @@ QUESTIONS AND RESPONSES:
                     st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                     st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                     st.markdown("---")
+
