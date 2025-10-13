@@ -6,6 +6,7 @@ from googletrans import Translator
 import time
 import tempfile
 import io
+import hashlib
 
 # -------------------------------
 # INITIALIZATION
@@ -181,47 +182,71 @@ if st.session_state["questions"]:
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
         st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
-        # --- Audio input with Whisper transcription ---
         st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
         audio_data = st.audio_input("", key=f"audio_input_{i}")
-
-        # Maintain a list of past transcriptions for each question
+        
+        # Initialize storage structures
         transcriptions_key = f"transcriptions_{i}"
+        last_hash_key = f"last_audio_hash_{i}"
         if transcriptions_key not in st.session_state:
             st.session_state[transcriptions_key] = []
-
+        if last_hash_key not in st.session_state:
+            st.session_state[last_hash_key] = None
+        
         if audio_data is not None:
             try:
-                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
-                    tmp_file.write(audio_data.read())
-                    tmp_path = tmp_file.name
+                # Read bytes (this consumes the stream)
+                audio_bytes = audio_data.read()
+        
+                # Create a short fingerprint for this audio blob
+                audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+        
+                # If we've already processed this exact audio blob, skip it
+                if st.session_state.get(last_hash_key) == audio_hash:
+                    # Optionally inform the user that this recording was already processed
+                    st.info(bilingual_text("This recording was already transcribed. Record again to add more."), icon="ℹ️")
+                else:
+                    # Save to temp file for Whisper API (some APIs accept file-like objects,
+                    # but saving to a temp file is safe and consistent)
+                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+                        tmp_file.write(audio_bytes)
+                        tmp_path = tmp_file.name
+        
+                    # Transcribe using Whisper
+                    with open(tmp_path, "rb") as f:
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=f
+                        )
+        
+                    # Clean up the temp file
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+        
+                    text_out = getattr(transcription, "text", "").strip()
+                    if text_out:
+                        # Append the newest transcription to the list for this question
+                        st.session_state[transcriptions_key].append(text_out)
+        
+                        # Combine all transcriptions for display/storage
+                        combined_text = " ".join(st.session_state[transcriptions_key])
+        
+                        # Update the answer text area (Streamlit will persist this in the next rerun)
+                        st.session_state[f"ans_{i}"] = combined_text
+                        st.session_state["user_answers"][i] = combined_text
+        
+                        # Remember this audio blob's hash so we don't reprocess it
+                        st.session_state[last_hash_key] = audio_hash
+        
+                        # Notify user (no st.rerun())
+                        st.success(bilingual_text("🎧 New recording transcribed and appended to your answer."), icon="🎤")
+                    else:
+                        st.warning(bilingual_text("⚠️ Transcription returned empty text."))
 
-                # Transcribe using Whisper
-                with open(tmp_path, "rb") as f:
-                    transcription = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=f
-                    )
-
-                text_out = getattr(transcription, "text", "").strip()
-                if text_out:
-                    # ✅ Append the new transcription to the list
-                    st.session_state[transcriptions_key].append(text_out)
-
-                    # Combine all transcriptions into a single answer
-                    combined_text = " ".join(st.session_state[transcriptions_key])
-
-                    # Update text area and session state
-                    st.session_state[f"ans_{i}"] = combined_text
-                    st.session_state["user_answers"][i] = combined_text
-
-                    st.toast(bilingual_text("🎧 New recording transcribed and added to answer box."), icon="🎤")
-                    time.sleep(0.3)
-                    st.rerun()
-
-            except Exception as e:
-                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
-
+    except Exception as e:
+        st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
         # --- Text area (bound directly to Streamlit widget state) ---
         label = bilingual_text("✏️ Your Answer:")
         # ⚡ Remove the value= parameter to let Streamlit persist edits/transcriptions
