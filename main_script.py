@@ -245,8 +245,9 @@ if st.session_state["questions"]:
                     else:
                         st.warning(bilingual_text("⚠️ Transcription returned empty text."))
 
-    except Exception as e:
-        st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+            except Exception as e:
+                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+    
         # --- Text area (bound directly to Streamlit widget state) ---
         label = bilingual_text("✏️ Your Answer:")
         # ⚡ Remove the value= parameter to let Streamlit persist edits/transcriptions
