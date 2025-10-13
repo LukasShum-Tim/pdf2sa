@@ -230,7 +230,7 @@ SOURCE TEXT:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1-2025-04-14",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7
             )
@@ -260,9 +260,6 @@ SOURCE TEXT:
         except Exception as e:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
 
-# -------------------------------
-# USER ANSWERS (WITH AUDIO INPUT)
-# -------------------------------
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
@@ -360,7 +357,7 @@ if st.session_state["questions"]:
     # -------------------------------
     def score_short_answers(user_answers, questions):
         grading_prompt = f"""
-You are an examiner. Score each short-answer response on a 0–2 scale.
+You are a Royal College of Physicians and Surgeons oral boards examiner. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
 Return ONLY JSON:
 [
   {{
@@ -379,7 +376,7 @@ QUESTIONS AND RESPONSES:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="gpt-4.1-2025-04-14",
                 messages=[{"role": "user", "content": grading_prompt}],
                 temperature=0
             )
