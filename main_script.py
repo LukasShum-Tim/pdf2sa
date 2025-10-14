@@ -387,7 +387,7 @@ QUESTIONS AND RESPONSES:
                 for i, (q, r) in enumerate(zip(questions, results)):
                     st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
                     
-                    if target_language_name == "en":
+                    if target_language_name == "English":
                         st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
                         st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
                         st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
