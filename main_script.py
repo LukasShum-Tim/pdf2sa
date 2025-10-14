@@ -200,11 +200,29 @@ def extract_text_from_pdf(uploaded_file):
         for page in pdf_doc:
             text += page.get_text("text")
     return text
-
-pdf_text = ""
+    
 if uploaded_file:
-    pdf_text = extract_text_from_pdf(uploaded_file)
-    st.success(bilingual_text("✅ PDF uploaded successfully!"))
+    if "pdf_text" not in st.session_state or st.session_state.get("uploaded_file_name") != uploaded_file.name:
+        pdf_text = extract_text_from_pdf(uploaded_file)
+        st.session_state["pdf_text"] = pdf_text
+        st.session_state["uploaded_file_name"] = uploaded_file.name
+        st.success(bilingual_text("✅ PDF uploaded successfully!"))
+    else:
+        pdf_text = st.session_state["pdf_text"]
+
+# -------------------------------
+# NEW BUTTON: Generate a new set of questions
+# -------------------------------
+if st.session_state.get("pdf_text"):
+    if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
+        # Clear old questions, answers, and evaluations
+        st.session_state["questions"] = []
+        st.session_state["user_answers"] = []
+        st.session_state["evaluations"] = []
+
+        # Trigger the question generation block using existing pdf_text
+        pdf_text = st.session_state["pdf_text"]
+        st.experimental_rerun()  # Optional: restart app flow to regenerate questions
 
 # -------------------------------
 # QUESTION GENERATION (SECTION-LENGTH PROPORTIONAL)
@@ -254,7 +272,8 @@ if pdf_text:
 You are an expert medical educator.
 Generate {q_count} concise short-answer questions and their answer keys based on the following content.
 Your target audience is residents.
-If the content is surgical, focus on presentation, approach, and management.
+If the content is surgical, focus on surgical presentation, surgical approach, and surgical management.
+If possible, generate **different questions from any previous set**, focusing on other key concepts.
 Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
 Return ONLY JSON in this format:
 [
@@ -315,6 +334,18 @@ SOURCE TEXT:
         st.session_state["user_answers"] = [""] * len(bilingual_questions)
         progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
 
+        # -------------------------------
+        # Store previous sets for consultation
+        # -------------------------------
+        if "all_question_sets" not in st.session_state:
+            st.session_state["all_question_sets"] = []
+        
+        # Append a copy of the current set
+        st.session_state["all_question_sets"].append({
+            "questions": bilingual_questions,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+        
         st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 
