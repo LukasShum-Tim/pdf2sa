@@ -207,7 +207,7 @@ if uploaded_file:
     st.success(bilingual_text("✅ PDF uploaded successfully!"))
 
 # -------------------------------
-# QUESTION GENERATION
+# QUESTION GENERATION (CHUNKED FOR FULL PDF COVERAGE)
 # -------------------------------
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
@@ -217,77 +217,94 @@ if pdf_text:
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
-        trimmed_text = pdf_text[:4000]
-        time.sleep(0.2)
-        progress.progress(10, text=bilingual_text("Preparing content..."))
+        # -------------------------------
+        # Helper: Chunk PDF into manageable pieces
+        # -------------------------------
+        def chunk_text(text, chunk_size=3000, overlap=200):
+            """Split text into overlapping chunks to preserve context."""
+            chunks = []
+            start = 0
+            while start < len(text):
+                end = min(start + chunk_size, len(text))
+                chunks.append(text[start:end])
+                start += chunk_size - overlap  # overlap ensures smooth coverage
+            return chunks
 
-        prompt = f"""
+        pdf_chunks = chunk_text(pdf_text, chunk_size=3000, overlap=200)
+        num_chunks = len(pdf_chunks)
+        questions_per_chunk = max(1, num_questions // num_chunks)
+
+        all_questions = []
+
+        for i, chunk in enumerate(pdf_chunks):
+            progress.progress(int(i / num_chunks * 50), text=bilingual_text(f"Generating questions from chunk {i+1}/{num_chunks}..."))
+            
+            prompt = f"""
 You are an expert medical educator.
-Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
+Generate {questions_per_chunk} concise short-answer questions and their answer keys based on the following content.
 Your target audience is residents.
-Make sure all the questions are clinically relevant.
-If the content you are given is surgical, make sure to structure your questions on the surgical presentation, surgical approach and/or surgical management. 
-Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
-If the text refers to case numbers, do not add that information in the questions.
-Make sure the questions you generate represent the whole text proportionately to the different topics presented.
-
+If the content is surgical, focus on presentation, approach, and management.
+Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
 Return ONLY JSON in this format:
 [
-  {{"question": "string", "answer_key": "string"}},
-  ...
+  {{"question": "string", "answer_key": "string"}}
 ]
 
 SOURCE TEXT:
-{trimmed_text}
+{chunk}
 """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-2025-04-14", 
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.8
-            )
-            raw = response.choices[0].message.content.strip()
-            # ✅ Clean JSON fences if present
-            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-            questions = json.loads(raw)
-            progress.progress(40, text=bilingual_text("Translating questions..."))
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4.1-2025-04-14", 
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.8
+                )
+                raw = response.choices[0].message.content.strip()
+                raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+                chunk_questions = json.loads(raw)
+                all_questions.extend(chunk_questions)
+            except Exception as e:
+                st.error(bilingual_text(f"⚠️ Question generation failed for chunk {i+1}: {e}"))
 
-            bilingual_questions = []
-            if target_language_name == "English":
-                for i, q in enumerate(questions):
-                    q_en = q.get("question", "")
-                    a_en = q.get("answer_key", "")
-                    bilingual_questions.append({
-                        "question_en": q_en,
-                        "answer_key_en": a_en,
+        # Limit to total number requested
+        all_questions = all_questions[:num_questions]
+        progress.progress(60, text=bilingual_text("Translating questions..."))
+
+        # -------------------------------
+        # Bilingual translation
+        # -------------------------------
+        bilingual_questions = []
+
+        if target_language_name == "English":
+            for q in all_questions:
+                q_en = q.get("question", "")
+                a_en = q.get("answer_key", "")
+                bilingual_questions.append({
+                    "question_en": q_en,
+                    "answer_key_en": a_en,
                 })
-
-                st.session_state["questions"] = bilingual_questions
-                st.session_state["user_answers"] = [""] * len(bilingual_questions)
-                progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
-                st.success(bilingual_text(f"Generated {len(bilingual_questions)} questions successfully!"))
-            
-            else:
-                for i, q in enumerate(questions):
-                    q_en = q.get("question", "")
-                    a_en = q.get("answer_key", "")
-                    q_trans = safe_translate(q_en, target_lang_code)
-                    a_trans = safe_translate(a_en, target_lang_code)
-                    bilingual_questions.append({
-                        "question_en": q_en,
-                        "question_translated": q_trans,
-                        "answer_key_en": a_en,
-                        "answer_key_translated": a_trans
+        else:
+            for i, q in enumerate(all_questions):
+                q_en = q.get("question", "")
+                a_en = q.get("answer_key", "")
+                q_trans = safe_translate(q_en, target_lang_code)
+                a_trans = safe_translate(a_en, target_lang_code)
+                bilingual_questions.append({
+                    "question_en": q_en,
+                    "question_translated": q_trans,
+                    "answer_key_en": a_en,
+                    "answer_key_translated": a_trans
                 })
-                progress.progress(40 + int((i+1)/len(questions)*50), text=bilingual_text("Translating..."))
+                progress.progress(60 + int((i+1)/len(all_questions)*30), text=bilingual_text("Translating..."))
 
-                st.session_state["questions"] = bilingual_questions
-                st.session_state["user_answers"] = [""] * len(bilingual_questions)
-                progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
-                st.success(bilingual_text(f"Generated {len(bilingual_questions)} bilingual questions successfully!"))
+        # -------------------------------
+        # Save to session state
+        # -------------------------------
+        st.session_state["questions"] = bilingual_questions
+        st.session_state["user_answers"] = [""] * len(bilingual_questions)
+        progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
 
-        except Exception as e:
-            st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
+        st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
