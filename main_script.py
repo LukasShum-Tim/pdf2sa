@@ -226,6 +226,7 @@ Generate {num_questions} concise short-answer questions and their answer keys ba
 Focus on clinically relevant key facts.
 Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
 If the text refers to case numbers, do not add that information in the questions.
+Make sure to sample the whole text to generate your questions to prevent too much overlapping.
 
 Return ONLY JSON in this format:
 [
@@ -240,7 +241,7 @@ SOURCE TEXT:
             response = client.chat.completions.create(
                 model="gpt-4.1-2025-04-14", 
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
+                temperature=0.8
             )
             raw = response.choices[0].message.content.strip()
             # ✅ Clean JSON fences if present
@@ -249,16 +250,23 @@ SOURCE TEXT:
             progress.progress(40, text=bilingual_text("Translating questions..."))
 
             bilingual_questions = []
-            for i, q in enumerate(questions):
-                q_en = q.get("question", "")
-                a_en = q.get("answer_key", "")
-                q_trans = safe_translate(q_en, target_lang_code)
-                a_trans = safe_translate(a_en, target_lang_code)
-                bilingual_questions.append({
-                    "question_en": q_en,
-                    "question_translated": q_trans,
-                    "answer_key_en": a_en,
-                    "answer_key_translated": a_trans
+            if target_language_name == "English":
+                for i, q in enumerate(questions):
+                    q_en = q.get("question", "")
+                    a_en = q.get("answer_key", "")
+                        "question_en": q_en,
+                        "answer_key_en": a_en,
+            else:
+                for i, q in enumerate(questions):
+                    q_en = q.get("question", "")
+                    a_en = q.get("answer_key", "")
+                    q_trans = safe_translate(q_en, target_lang_code)
+                    a_trans = safe_translate(a_en, target_lang_code)
+                    bilingual_questions.append({
+                        "question_en": q_en,
+                        "question_translated": q_trans,
+                        "answer_key_en": a_en,
+                        "answer_key_translated": a_trans
                 })
                 progress.progress(40 + int((i+1)/len(questions)*50), text=bilingual_text("Translating..."))
 
