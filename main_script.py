@@ -217,14 +217,13 @@ pdf_text = st.session_state.get("pdf_text", "")
 # -------------------------------
 if st.session_state.get("pdf_text"):
     if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
-        # Clear old questions, answers, and evaluations
+        # Clear old questions, answers, evaluations
         st.session_state["questions"] = []
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
 
-        # Trigger the question generation block using existing pdf_text
-        pdf_text = st.session_state["pdf_text"]
-        st.experimental_rerun()  # Optional: restart app flow to regenerate questions
+        # Set a flag to trigger new generation
+        st.session_state["generate_new_set"] = True
 
 # -------------------------------
 # QUESTION GENERATION (Single GPT Call, Bilingual, Previous Sets)
@@ -234,9 +233,15 @@ if pdf_text:
 
     num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 20, 5)
 
-    if st.button(bilingual_text("⚡ Generate Questions")):
-        progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
+    # Trigger generation if user clicks "Generate Questions" OR new set flag is set
+    if st.button(bilingual_text("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
 
+        # Clear the flag
+        if st.session_state.get("generate_new_set"):
+            st.session_state["generate_new_set"] = False
+
+        # Use existing pdf_text from session_state
+        pdf_text = st.session_state["pdf_text"]
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
