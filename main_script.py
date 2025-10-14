@@ -223,7 +223,9 @@ if pdf_text:
         prompt = f"""
 You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
-Focus on clinically relevant key facts.
+Your target audience is residents.
+Make sure all the questions are clinically relevant.
+If the content you are given is surgical, make sure to structure your questions on the surgical presentation, surgical approach and/or surgical management. 
 Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
 If the text refers to case numbers, do not add that information in the questions.
 Make sure the questions you generate represent the whole text proportionately to the different topics presented.
