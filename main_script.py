@@ -210,6 +210,8 @@ if uploaded_file:
     else:
         pdf_text = st.session_state["pdf_text"]
 
+pdf_text = st.session_state.get("pdf_text", "")
+
 # -------------------------------
 # NEW BUTTON: Generate a new set of questions
 # -------------------------------
