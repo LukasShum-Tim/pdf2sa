@@ -235,13 +235,16 @@ if pdf_text:
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
-
+    
         # Clear the flag
         if st.session_state.get("generate_new_set"):
             st.session_state["generate_new_set"] = False
-
+    
         # Use existing pdf_text from session_state
         pdf_text = st.session_state["pdf_text"]
+    
+        # Initialize progress bar
+        progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
