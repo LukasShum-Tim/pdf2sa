@@ -226,7 +226,7 @@ Generate {num_questions} concise short-answer questions and their answer keys ba
 Focus on clinically relevant key facts.
 Structure your questions like a Royal College of Physicians and Surgeons examiner for residents' oral boards exams.
 If the text refers to case numbers, do not add that information in the questions.
-Make sure to sample the whole text to generate your questions to prevent too much overlapping.
+Make sure the questions you generate represent the whole text proportionately to the different topics presented.
 
 Return ONLY JSON in this format:
 [
