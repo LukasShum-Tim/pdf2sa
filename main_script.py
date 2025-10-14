@@ -17,12 +17,12 @@ client = OpenAI()
 translator = Translator()
 
 st.set_page_config(
-    page_title="📘 Multilingual Short-Answer Trainer",
+    page_title="📘 Multilingual Oral Board Exam Trainer",
     page_icon="🧠",
     layout="centered"
 )
 
-st.title("🧠 Multilingual Short-Answer Trainer from PDF")
+st.title("🧠 Multilingual Oral Board Exam Trainer")
 st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
 
 # -------------------------------
@@ -386,10 +386,18 @@ QUESTIONS AND RESPONSES:
             with st.expander(bilingual_text("📊 Detailed Feedback")):
                 for i, (q, r) in enumerate(zip(questions, results)):
                     st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
-                    st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
-                    st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
-                    st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
-                    st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
-                    st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
-                    st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
-                    st.markdown("---")
+                    
+                    if target_language_name = "en":
+                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                        st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
+                        st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
+                        st.markdown("---")
+
+                    else:                    
+                        st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
+                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                        st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
+                        st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
+                        st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
+                        st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
+                        st.markdown("---")
