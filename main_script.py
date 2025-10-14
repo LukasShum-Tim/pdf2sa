@@ -23,7 +23,8 @@ st.set_page_config(
 )
 
 st.title("🧠 Multilingual Oral Board Exam Trainer")
-st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback. If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
+st.markdown("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error.")
 
 # -------------------------------
 # SESSION STATE INITIALIZATION
