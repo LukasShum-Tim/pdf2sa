@@ -227,7 +227,7 @@ if st.session_state.get("pdf_text"):
         st.experimental_rerun()  # Optional: restart app flow to regenerate questions
 
 # -------------------------------
-# QUESTION GENERATION (SECTION-LENGTH PROPORTIONAL)
+# QUESTION GENERATION (Single GPT Call, Bilingual, Previous Sets)
 # -------------------------------
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
@@ -238,44 +238,15 @@ if pdf_text:
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
         # -------------------------------
-        # Helper: Split PDF into sections by headings
+        # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
-        def split_into_sections(text):
-            """
-            Split text by headings.
-            This example uses lines in ALL CAPS or numbered headings like '1. ', '2.1 '.
-            Adjust regex to match your manual's heading style.
-            """
-            pattern = r'(\n(?:[0-9]+(?:\.[0-9]+)*\s+.*)|\n[A-Z ]{5,}\n)'
-            splits = re.split(pattern, text)
-            sections = []
-            for s in splits:
-                s_clean = s.strip()
-                if s_clean:
-                    sections.append(s_clean)
-            return sections
-
-        sections = split_into_sections(pdf_text)
-        total_length = sum(len(s) for s in sections)
-
-        # -------------------------------
-        # Allocate questions proportionally by section length
-        # -------------------------------
-        questions_per_section = [
-            max(1, round(len(s) / total_length * num_questions)) for s in sections
-        ]
-
-        all_questions = []
-
-        for i, (section_text, q_count) in enumerate(zip(sections, questions_per_section)):
-            progress.progress(int(i / len(sections) * 50), text=bilingual_text(f"Generating questions from section {i+1}/{len(sections)}..."))
-
-            prompt = f"""
+        prompt = f"""
 You are an expert medical educator.
-Generate {q_count} concise short-answer questions and their answer keys based on the following content.
+Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
 Your target audience is residents.
-If the content is surgical, focus on surgical presentation, surgical approach, and surgical management.
-If possible, generate **different questions from any previous set**, focusing on other key concepts.
+Ensure the questions are **proportional across the manual**, covering all major topics.
+Focus on clinical relevance, and if surgical content exists, include surgical presentation, approach, and management.
+Avoid repeating questions from any previous set.
 Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
 Return ONLY JSON in this format:
 [
@@ -283,24 +254,89 @@ Return ONLY JSON in this format:
 ]
 
 SOURCE TEXT:
-{section_text}
+{pdf_text}
 """
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4.1-2025-04-14",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.8
-                )
-                raw = response.choices[0].message.content.strip()
-                raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-                section_questions = json.loads(raw)
-                all_questions.extend(section_questions)
-            except Exception as e:
-                st.error(bilingual_text(f"⚠️ Question generation failed for section {i+1}: {e}"))
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-2025-04-14",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.8
+            )
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+            all_questions = json.loads(raw)
+            progress.progress(50, text=bilingual_text("Questions generated. Translating..."))
 
-        # Limit to total number requested
-        all_questions = all_questions[:num_questions]
-        progress.progress(60, text=bilingual_text("Translating questions..."))
+        except Exception as e:
+            st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
+            all_questions = []
+
+        if all_questions:
+            # -------------------------------
+            # 2️⃣ Bilingual translation (batched)
+            # -------------------------------
+            bilingual_questions = []
+
+            if target_language_name == "English":
+                for q in all_questions:
+                    bilingual_questions.append({
+                        "question_en": q.get("question", ""),
+                        "answer_key_en": q.get("answer_key", "")
+                    })
+            else:
+                # Prepare batch text for GPT translation to minimize API calls
+                batch_text = "\n\n".join(
+                    [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
+                )
+                translation_prompt = f"""
+Translate the following questions and answers into {target_language_name}.
+Return JSON in the same order with this format:
+[
+  {{"question_translated": "string", "answer_key_translated": "string"}}
+]
+
+TEXT:
+{batch_text}
+"""
+                try:
+                    translation_resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": translation_prompt}],
+                        temperature=0
+                    )
+                    raw_trans = translation_resp.choices[0].message.content.strip()
+                    raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
+                    translations = json.loads(raw_trans)
+                except Exception:
+                    translations = [{}] * len(all_questions)
+
+                for q, t in zip(all_questions, translations):
+                    bilingual_questions.append({
+                        "question_en": q.get("question", ""),
+                        "answer_key_en": q.get("answer_key", ""),
+                        "question_translated": t.get("question_translated", ""),
+                        "answer_key_translated": t.get("answer_key_translated", "")
+                    })
+
+            # -------------------------------
+            # 3️⃣ Save to session state
+            # -------------------------------
+            st.session_state["questions"] = bilingual_questions
+            st.session_state["user_answers"] = [""] * len(bilingual_questions)
+            progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+
+            # -------------------------------
+            # 4️⃣ Store previous sets
+            # -------------------------------
+            if "all_question_sets" not in st.session_state:
+                st.session_state["all_question_sets"] = []
+
+            st.session_state["all_question_sets"].append({
+                "questions": bilingual_questions,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+
+            st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
         # -------------------------------
         # Bilingual translation
