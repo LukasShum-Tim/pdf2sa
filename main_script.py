@@ -266,7 +266,7 @@ SOURCE TEXT:
 """
         try:
             response = client.chat.completions.create(
-                model="gpt-4.1-2025-04-14",
+                model="gpt-4.1-mini-2025-04-14",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.8
             )
