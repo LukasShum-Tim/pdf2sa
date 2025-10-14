@@ -258,6 +258,12 @@ SOURCE TEXT:
                         "question_en": q_en,
                         "answer_key_en": a_en,
                 })
+
+                st.session_state["questions"] = bilingual_questions
+                st.session_state["user_answers"] = [""] * len(bilingual_questions)
+                progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+                st.success(bilingual_text(f"Generated {len(bilingual_questions)} questions successfully!"))
+            
             else:
                 for i, q in enumerate(questions):
                     q_en = q.get("question", "")
@@ -272,10 +278,10 @@ SOURCE TEXT:
                 })
                 progress.progress(40 + int((i+1)/len(questions)*50), text=bilingual_text("Translating..."))
 
-            st.session_state["questions"] = bilingual_questions
-            st.session_state["user_answers"] = [""] * len(bilingual_questions)
-            progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
-            st.success(bilingual_text(f"Generated {len(bilingual_questions)} bilingual questions successfully!"))
+                st.session_state["questions"] = bilingual_questions
+                st.session_state["user_answers"] = [""] * len(bilingual_questions)
+                progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+                st.success(bilingual_text(f"Generated {len(bilingual_questions)} bilingual questions successfully!"))
 
         except Exception as e:
             st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
@@ -293,7 +299,11 @@ if st.session_state["questions"]:
 
     for i, q in enumerate(questions):
         st.markdown(f"### Q{i+1}. {q.get('question_en', '')}")
-        st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
+
+        if target_language_name == "English":
+            pass
+        else:    
+            st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
         st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
         audio_data = st.audio_input("", key=f"audio_input_{i}")
