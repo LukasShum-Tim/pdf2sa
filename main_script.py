@@ -303,7 +303,7 @@ if st.session_state["questions"]:
                 if st.session_state.get(last_hash_key) == audio_hash:
                     st.info(bilingual_text("This recording was already transcribed. Record again to add more."), icon="ℹ️")
                 else:
-                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_file:
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
                         tmp_file.write(audio_bytes)
                         tmp_path = tmp_file.name
 
