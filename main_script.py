@@ -434,19 +434,20 @@ QUESTIONS AND RESPONSES:
             st.session_state['evaluations'] = results
 
         if results:
-        # -------------------------------
-        # Compute total score
-        # -------------------------------
-        total_score = sum(r.get("score", 0) for r in results)
-        max_score = len(results) * 2  # each question max 2 points
-        percentage = round(total_score / max_score * 100, 1)
-
-        st.success(bilingual_text("✅ Evaluation complete!"))
-
-        # -------------------------------
-        # Display total score
-        # -------------------------------
-        st.markdown(f"### 🏆 {bilingual_text('Total Score')}: {total_score}/{max_score} ({percentage}%)")
+            # -------------------------------
+            # Compute total score
+            # -------------------------------
+            total_score = sum(r.get("score", 0) for r in results)
+            max_score = len(results) * 2  # each question max 2 points
+            percentage = round(total_score / max_score * 100, 1)
+    
+            st.success(bilingual_text("✅ Evaluation complete!"))
+    
+            # -------------------------------
+            # Display total score
+            # -------------------------------
+            st.markdown(f"### 🏆 {bilingual_text('Total Score')}: {total_score}/{max_score} ({percentage}%)")
+            
             st.success(bilingual_text("✅ Evaluation complete!"))
             with st.expander(bilingual_text("📊 Detailed Feedback")):
                 for i, (q, r) in enumerate(zip(questions, results)):
