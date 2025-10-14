@@ -211,7 +211,7 @@ if uploaded_file:
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 10, 5)
+    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 20, 5)
 
     if st.button(bilingual_text("⚡ Generate Questions")):
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
