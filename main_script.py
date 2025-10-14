@@ -254,8 +254,10 @@ SOURCE TEXT:
                 for i, q in enumerate(questions):
                     q_en = q.get("question", "")
                     a_en = q.get("answer_key", "")
-                    "question_en": q_en,
-                    "answer_key_en": a_en,
+                    bilingual_questions.append({
+                        "question_en": q_en,
+                        "answer_key_en": a_en,
+                })
             else:
                 for i, q in enumerate(questions):
                     q_en = q.get("question", "")
