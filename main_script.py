@@ -207,7 +207,7 @@ if uploaded_file:
     st.success(bilingual_text("✅ PDF uploaded successfully!"))
 
 # -------------------------------
-# QUESTION GENERATION (CHUNKED FOR FULL PDF COVERAGE)
+# QUESTION GENERATION (SECTION-LENGTH PROPORTIONAL)
 # -------------------------------
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
@@ -218,30 +218,41 @@ if pdf_text:
         progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
 
         # -------------------------------
-        # Helper: Chunk PDF into manageable pieces
+        # Helper: Split PDF into sections by headings
         # -------------------------------
-        def chunk_text(text, chunk_size=3000, overlap=200):
-            """Split text into overlapping chunks to preserve context."""
-            chunks = []
-            start = 0
-            while start < len(text):
-                end = min(start + chunk_size, len(text))
-                chunks.append(text[start:end])
-                start += chunk_size - overlap  # overlap ensures smooth coverage
-            return chunks
+        def split_into_sections(text):
+            """
+            Split text by headings.
+            This example uses lines in ALL CAPS or numbered headings like '1. ', '2.1 '.
+            Adjust regex to match your manual's heading style.
+            """
+            pattern = r'(\n(?:[0-9]+(?:\.[0-9]+)*\s+.*)|\n[A-Z ]{5,}\n)'
+            splits = re.split(pattern, text)
+            sections = []
+            for s in splits:
+                s_clean = s.strip()
+                if s_clean:
+                    sections.append(s_clean)
+            return sections
 
-        pdf_chunks = chunk_text(pdf_text, chunk_size=3000, overlap=200)
-        num_chunks = len(pdf_chunks)
-        questions_per_chunk = max(1, num_questions // num_chunks)
+        sections = split_into_sections(pdf_text)
+        total_length = sum(len(s) for s in sections)
+
+        # -------------------------------
+        # Allocate questions proportionally by section length
+        # -------------------------------
+        questions_per_section = [
+            max(1, round(len(s) / total_length * num_questions)) for s in sections
+        ]
 
         all_questions = []
 
-        for i, chunk in enumerate(pdf_chunks):
-            progress.progress(int(i / num_chunks * 50), text=bilingual_text(f"Generating questions from chunk {i+1}/{num_chunks}..."))
-            
+        for i, (section_text, q_count) in enumerate(zip(sections, questions_per_section)):
+            progress.progress(int(i / len(sections) * 50), text=bilingual_text(f"Generating questions from section {i+1}/{len(sections)}..."))
+
             prompt = f"""
 You are an expert medical educator.
-Generate {questions_per_chunk} concise short-answer questions and their answer keys based on the following content.
+Generate {q_count} concise short-answer questions and their answer keys based on the following content.
 Your target audience is residents.
 If the content is surgical, focus on presentation, approach, and management.
 Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
@@ -251,20 +262,20 @@ Return ONLY JSON in this format:
 ]
 
 SOURCE TEXT:
-{chunk}
+{section_text}
 """
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4.1-2025-04-14", 
+                    model="gpt-4.1-2025-04-14",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.8
                 )
                 raw = response.choices[0].message.content.strip()
                 raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-                chunk_questions = json.loads(raw)
-                all_questions.extend(chunk_questions)
+                section_questions = json.loads(raw)
+                all_questions.extend(section_questions)
             except Exception as e:
-                st.error(bilingual_text(f"⚠️ Question generation failed for chunk {i+1}: {e}"))
+                st.error(bilingual_text(f"⚠️ Question generation failed for section {i+1}: {e}"))
 
         # Limit to total number requested
         all_questions = all_questions[:num_questions]
@@ -305,6 +316,7 @@ SOURCE TEXT:
         progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
 
         st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
