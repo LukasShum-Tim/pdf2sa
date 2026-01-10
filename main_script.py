@@ -448,41 +448,46 @@ if st.session_state["questions"]:
         if last_hash_key not in st.session_state:
             st.session_state[last_hash_key] = None
 
-        if audio_data is not None:
-            try:
-                audio_bytes = audio_data.getvalue()  # ✅ safer than .read()
-                audio_hash = hashlib.sha256(audio_bytes).hexdigest()
-
-                if st.session_state.get(last_hash_key) == audio_hash:
-                    st.info(bilingual_text("This recording was already transcribed. Record again to add more."), icon="ℹ️")
-                else:
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                        tmp_file.write(audio_bytes)
-                        tmp_path = tmp_file.name
-
-                    with open(tmp_path, "rb") as f:
-                        transcription = client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=f
-                        )
-
-                    try:
-                        os.remove(tmp_path)
-                    except Exception:
-                        pass
-
-                    text_out = getattr(transcription, "text", "").strip()
-                    if text_out:
-                        st.session_state[transcriptions_key].append(text_out)
-                        combined_text = " ".join(st.session_state[transcriptions_key])
-                        st.session_state[f"ans_{i}"] = combined_text
-                        st.session_state["user_answers"][i] = combined_text
-                        st.session_state[last_hash_key] = audio_hash
-                        st.success(bilingual_text("🎧 New recording transcribed and appended to your answer."), icon="🎤")
+    if audio_data is not None:
+        try:
+            audio_bytes = audio_data.getvalue()
+            audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+    
+            if st.session_state.get(last_hash_key) == audio_hash:
+                st.info(bilingual_text("This recording was already transcribed."), icon="ℹ️")
+            else:
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                    tmp_file.write(audio_bytes)
+                    tmp_path = tmp_file.name
+    
+                with open(tmp_path, "rb") as f:
+                    transcription = client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=f
+                    )
+    
+                os.remove(tmp_path)
+    
+                dictated_text = getattr(transcription, "text", "").strip()
+    
+                if dictated_text:
+                    # ✅ Append to CURRENT text area value
+                    existing_text = st.session_state.get(f"ans_{i}", "").strip()
+                    if existing_text:
+                        new_text = f"{existing_text}. {dictated_text}"
                     else:
-                        st.warning(bilingual_text("⚠️ Transcription returned empty text."))
-            except Exception as e:
-                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+                        new_text = dictated_text
+    
+                    st.session_state[f"ans_{i}"] = new_text
+                    st.session_state["user_answers"][i] = new_text
+                    st.session_state[last_hash_key] = audio_hash
+    
+                    st.success(bilingual_text("🎧 Dictation appended to your answer."), icon="🎤")
+                else:
+                    st.warning(bilingual_text("⚠️ Transcription returned empty text."))
+    
+        except Exception as e:
+            st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
         label = bilingual_text("✏️ Your Answer:")
         current_text = st.text_area(label, height=80, key=f"ans_{i}")
@@ -583,15 +588,15 @@ QUESTIONS AND RESPONSES:
         st.session_state["evaluations"] = []
         st.session_state["generate_new_set"] = True
     
-        # 🔥 Clear ALL answer-related state
+        # Clear ALL answer + widget state
         keys_to_delete = [
-            k for k in st.session_state.keys()
-            if k.startswith(("audio_input_", "transcriptions_", "last_audio_hash_", "ans_"))
+            k for k in list(st.session_state.keys())
+            if k.startswith(("audio_input_", "last_audio_hash_", "ans_"))
             or k == "user_answers"
         ]
         for k in keys_to_delete:
             del st.session_state[k]
-    
+        
         st.rerun()
     
             
