@@ -454,6 +454,8 @@ if st.session_state["questions"]:
         if last_hash_key not in st.session_state:
             st.session_state[last_hash_key] = None
 
+        dictated_text = ""
+        
         if audio_data is not None:
             try:
                 audio_bytes = audio_data.getvalue()
