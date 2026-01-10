@@ -418,7 +418,6 @@ TEXT:
         
         st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
-
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
@@ -448,46 +447,46 @@ if st.session_state["questions"]:
         if last_hash_key not in st.session_state:
             st.session_state[last_hash_key] = None
 
-    if audio_data is not None:
-        try:
-            audio_bytes = audio_data.getvalue()
-            audio_hash = hashlib.sha256(audio_bytes).hexdigest()
-    
-            if st.session_state.get(last_hash_key) == audio_hash:
-                st.info(bilingual_text("This recording was already transcribed."), icon="ℹ️")
-            else:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                    tmp_file.write(audio_bytes)
-                    tmp_path = tmp_file.name
-    
-                with open(tmp_path, "rb") as f:
-                    transcription = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=f
-                    )
-    
-                os.remove(tmp_path)
-    
-                dictated_text = getattr(transcription, "text", "").strip()
-    
-                if dictated_text:
-                    # ✅ Append to CURRENT text area value
-                    existing_text = st.session_state.get(f"ans_{i}", "").strip()
-                    if existing_text:
-                        new_text = f"{existing_text}. {dictated_text}"
-                    else:
-                        new_text = dictated_text
-    
-                    st.session_state[f"ans_{i}"] = new_text
-                    st.session_state["user_answers"][i] = new_text
-                    st.session_state[last_hash_key] = audio_hash
-    
-                    st.success(bilingual_text("🎧 Dictation appended to your answer."), icon="🎤")
+        if audio_data is not None:
+            try:
+                audio_bytes = audio_data.getvalue()
+                audio_hash = hashlib.sha256(audio_bytes).hexdigest()
+        
+                if st.session_state.get(last_hash_key) == audio_hash:
+                    st.info(bilingual_text("This recording was already transcribed."), icon="ℹ️")
                 else:
-                    st.warning(bilingual_text("⚠️ Transcription returned empty text."))
-    
-        except Exception as e:
-            st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+                        tmp_file.write(audio_bytes)
+                        tmp_path = tmp_file.name
+        
+                    with open(tmp_path, "rb") as f:
+                        transcription = client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=f
+                        )
+        
+                    os.remove(tmp_path)
+        
+                    dictated_text = getattr(transcription, "text", "").strip()
+        
+                    if dictated_text:
+                        # ✅ Append to CURRENT text area value
+                        existing_text = st.session_state.get(f"ans_{i}", "").strip()
+                        if existing_text:
+                            new_text = f"{existing_text} {dictated_text}"
+                        else:
+                            new_text = dictated_text
+        
+                        st.session_state[f"ans_{i}"] = new_text
+                        st.session_state["user_answers"][i] = new_text
+                        st.session_state[last_hash_key] = audio_hash
+        
+                        st.success(bilingual_text("🎧 Dictation appended to your answer."), icon="🎤")
+                    else:
+                        st.warning(bilingual_text("⚠️ Transcription returned empty text."))
+        
+            except Exception as e:
+                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
         label = bilingual_text("✏️ Your Answer:")
         current_text = st.text_area(label, height=80, key=f"ans_{i}")
