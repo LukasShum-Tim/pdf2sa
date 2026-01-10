@@ -256,7 +256,7 @@ def get_used_topics():
 if pdf_text:
     st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 20, 5)
+    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 10, 3)
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
