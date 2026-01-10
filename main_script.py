@@ -496,8 +496,17 @@ if st.session_state["questions"]:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
         label = bilingual_text("✏️ Your Answer:")
-        current_text = st.text_area(label, height=80, key=f"ans_{qid}_{i}")
-        #st.session_state["user_answers"][i] = current_text
+        key = f"ans_{qid}_{i}"  # unified key
+        existing_text = st.session_state.get(key, "").strip()
+        if existing_text:
+            new_text = f"{existing_text} {dictated_text}"
+        else:
+            new_text = dictated_text
+        
+        st.session_state[key] = new_text
+        st.session_state["user_answers"][i] = new_text
+        
+        current_text = st.text_area(label, height=80, key=key)
 
     user_answers = st.session_state.get("user_answers", [])
 
