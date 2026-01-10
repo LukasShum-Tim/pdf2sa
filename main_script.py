@@ -548,5 +548,5 @@ QUESTIONS AND RESPONSES:
         url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
         url_students = "https://forms.gle/CWKRqptQhpdLKaj8A"
         st.write(bilingual_text("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
-        #st.markdown(bilingual_text("[Feedback form for instructors](%s)" % url_instructors))
-        st.markdown(bilingual_text("[Feedback form for students](%s)" % url_students))
+        st.markdown(bilingual_text("[Feedback form for instructors](%s)" % url_instructors))
+        #st.markdown(bilingual_text("[Feedback form for students](%s)" % url_students))
