@@ -596,6 +596,51 @@ QUESTIONS AND RESPONSES:
                 for used_topic_item in get_used_topics():
                     st.write(bilingual_text(used_topic_item))
 
+
+    # -------------------------------
+    # Previous Question Sets Viewer
+    # -------------------------------
+    if st.session_state.get("all_question_sets"):
+        st.subheader(bilingual_text("📚 View Previous Question Sets"))
+    
+        # Create a dictionary mapping timestamps to the sets
+        prev_sets = {
+            f"Set from {s.get('timestamp', '')} ({len(s.get('questions', []))} questions)": s
+            for s in st.session_state["all_question_sets"]
+        }
+    
+        selected_set_label = st.selectbox(
+            bilingual_text("Select a previous question set to view:"),
+            options=list(prev_sets.keys())
+        )
+    
+        if selected_set_label:
+            selected_set = prev_sets[selected_set_label]
+            prev_questions = selected_set.get("questions", [])
+            prev_evals = selected_set.get("evaluations", [])  # optional if stored
+    
+            for i, q in enumerate(prev_questions):
+                st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
+                if target_language_name != "English":
+                    st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
+    
+                # Show user's previous answer
+                prev_ans = q.get("user_answer", "")
+                if prev_ans:
+                    st.markdown(f"**Your Previous Answer:** {prev_ans}")
+    
+                # Show previous evaluation if available
+                eval_item = prev_evals[i] if i < len(prev_evals) else {}
+                if eval_item:
+                    st.markdown(f"**Score:** {eval_item.get('score', 'N/A')} / 2")
+                    st.markdown(f"**Feedback (English):** {eval_item.get('feedback', '')}")
+                    if target_language_name != "English":
+                        st.markdown(f"**Feedback ({target_language_name}):** {eval_item.get('feedback_translated', '')}")
+                    st.markdown(f"**Model Answer (English):** {eval_item.get('model_answer', '')}")
+                    if target_language_name != "English":
+                        st.markdown(f"**Model Answer ({target_language_name}):** {eval_item.get('model_answer_translated', '')}")
+                st.markdown("---")
+    
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
     # -------------------------------
