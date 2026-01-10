@@ -29,6 +29,9 @@ st.markdown("If you are using a mobile device, make sure to use a pdf file that 
 # -------------------------------
 # SESSION STATE INITIALIZATION
 # -------------------------------
+if "question_set_id" not in st.session_state:
+    st.session_state["question_set_id"] = 0
+
 if "generate_new_set" not in st.session_state:
     st.session_state["generate_new_set"] = False
 
@@ -438,7 +441,11 @@ if st.session_state["questions"]:
             st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
         st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
-        audio_data = st.audio_input("", key=f"audio_input_{i}")
+        qid = st.session_state["question_set_id"]
+        audio_data = st.audio_input(
+            "",
+            key=f"audio_input_{qid}_{i}"
+        )
 
         transcriptions_key = f"transcriptions_{i}"
         last_hash_key = f"last_audio_hash_{i}"
@@ -489,8 +496,8 @@ if st.session_state["questions"]:
                 st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
 
         label = bilingual_text("✏️ Your Answer:")
-        current_text = st.text_area(label, height=80, key=f"ans_{i}")
-        st.session_state["user_answers"][i] = current_text
+        current_text = st.text_area(label, height=80, key=f"ans_{qid}_{i}")
+        #st.session_state["user_answers"][i] = current_text
 
     user_answers = st.session_state.get("user_answers", [])
 
@@ -586,16 +593,7 @@ QUESTIONS AND RESPONSES:
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
         st.session_state["generate_new_set"] = True
-    
-        # Clear ALL answer + widget state
-        keys_to_delete = [
-            k for k in list(st.session_state.keys())
-            if k.startswith(("audio_input_", "last_audio_hash_", "ans_"))
-            or k == "user_answers"
-        ]
-        for k in keys_to_delete:
-            del st.session_state[k]
-        
+        st.session_state["question_set_id"] += 1
         st.rerun()
     
             
