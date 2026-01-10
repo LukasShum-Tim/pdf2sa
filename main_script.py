@@ -212,6 +212,42 @@ if uploaded_file:
 
 pdf_text = st.session_state.get("pdf_text", "")
 
+
+# -------------------------------
+# Question Topic Extraction
+# -------------------------------
+def extract_topics_from_questions(questions):
+    """
+    Extract short topic labels from a list of questions.
+    """
+    prompt = f"""
+Extract a concise topic label (2–5 words) for each of the following oral board questions.
+Return ONLY a JSON list of UNIQUE topic strings.
+
+QUESTIONS:
+{json.dumps([q["question_en"] for q in questions], indent=2)}
+"""
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    raw = response.choices[0].message.content.strip()
+    raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+    return json.loads(raw)
+
+
+def get_used_topics():
+    """
+    Aggregate all previously used topics from session state.
+    """
+    used = set()
+    for s in st.session_state.get("all_question_sets", []):
+        for t in s.get("topics", []):
+            used.add(t)
+    return sorted(list(used))
+
+
 # -------------------------------
 # NEW BUTTON: Generate a new set of questions
 # -------------------------------
@@ -248,21 +284,32 @@ if pdf_text:
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
+        used_topics = get_used_topics()
         prompt = f"""
 You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
+PREVIOUSLY USED TOPICS (avoid these unless no alternatives remain): {json.dumps(used_topics, indent=2)}
 Your target audience is residents.
-Ensure the questions are **proportional across the manual**, covering all major topics.
-Make sure that you do not only focus on the content at the beginning of the manual.
-Focus on clinical relevance, and if surgical content exists, include surgical presentation, approach, and management.
-Do NOT generate questions in the same order as the manual.
-Do NOT select topics based on their position in the text.
-Randomly sample from the full topic list.
-Do NOT generate new questions with a similar topic to any previous set, unless all major topics from the manual have been covered. For instance, if there is a question on surgical airway, do not ask another question on surgical airway unless all other topics from the manual have already been covered.
-Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
+
+TASK:
+1. Identify ALL major topics in the source material.
+2. Exclude any topics listed above.
+3. Randomly select {num_questions} DIFFERENT remaining topics.
+4. Write ONE concise short-answer question per topic, structured like a Royal College of Physicians and Surgeons oral boards exam.
+
+RULES:
+- Ensure the questions are **proportional across the manual**, covering all major topics.
+- Each question must test a DIFFERENT topic
+- Do NOT generate multiple questions from the same subsection
+- Do NOT follow the order of the manual
+- Do NOT repeat themes from earlier question sets
+- Focus on clinical relevance
+- If surgical content exists, include presentation, approach, and management
+- Questions should resemble Royal College oral board style
+
 Return ONLY JSON in this format:
 [
-  {{"question": "string", "answer_key": "string"}}
+  {{"topic": "string", "question": "string", "answer_key": "string"}}
 ]
 
 SOURCE TEXT:
@@ -276,7 +323,19 @@ SOURCE TEXT:
             )
             raw = response.choices[0].message.content.strip()
             raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-            all_questions = json.loads(raw)
+            all_items = json.loads(raw)
+
+            # Normalize structure
+            all_questions = [
+                {
+                    "topic": item.get("topic", "").strip(),
+                    "question": item.get("question", "").strip(),
+                    "answer_key": item.get("answer_key", "").strip()
+                }
+                for item in all_items
+                if item.get("question") and item.get("answer_key")
+            ]
+            
             progress.progress(50, text=bilingual_text("Questions generated. Translating..."))
 
         except Exception as e:
@@ -343,8 +402,11 @@ TEXT:
             if "all_question_sets" not in st.session_state:
                 st.session_state["all_question_sets"] = []
 
+            topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
+            
             st.session_state["all_question_sets"].append({
                 "questions": bilingual_questions,
+                "topics": topics,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
 
@@ -549,6 +611,11 @@ QUESTIONS AND RESPONSES:
                         st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                         st.markdown("---")
 
+        if st.session_state.get("all_question_sets"):
+            with st.expander("📚 Topics Covered So Far"):
+                st.write(", ".join(get_used_topics()))
+
+        
         url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
         url_students = "https://forms.gle/CWKRqptQhpdLKaj8A"
         st.write(bilingual_text("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
