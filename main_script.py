@@ -601,7 +601,7 @@ QUESTIONS AND RESPONSES:
         # Previous Question Sets Viewer
         # -------------------------------
         if st.session_state.get("all_question_sets"):
-            st.subheader(bilingual_text("📚 View Previous Question Sets"))
+            st.subheader(bilingual_text("📚 Retry Previous Question Sets"))
         
             # Build a dictionary of preview labels -> sets
             prev_sets = {}
