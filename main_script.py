@@ -247,20 +247,6 @@ def get_used_topics():
             used.add(t)
     return sorted(list(used))
 
-
-# -------------------------------
-# NEW BUTTON: Generate a new set of questions
-# -------------------------------
-if st.session_state.get("pdf_text"):
-    if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
-        # Clear old questions, answers, evaluations
-        st.session_state["questions"] = []
-        st.session_state["user_answers"] = []
-        st.session_state["evaluations"] = []
-
-        # Set a flag to trigger new generation
-        st.session_state["generate_new_set"] = True
-
 # -------------------------------
 # QUESTION GENERATION (Single GPT Call, Bilingual, Previous Sets)
 # -------------------------------
@@ -613,7 +599,21 @@ QUESTIONS AND RESPONSES:
 
         if st.session_state.get("all_question_sets"):
             with st.expander("📚 Topics Covered So Far"):
-                st.write(", ".join(get_used_topics()))
+                for used_topic_item in get_used_topics:
+                    st.write(used_topic_item)
+
+        # -------------------------------
+        # NEW BUTTON: Generate a new set of questions
+        # -------------------------------
+        if st.session_state.get("pdf_text"):
+            if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
+                # Clear old questions, answers, evaluations
+                st.session_state["questions"] = []
+                st.session_state["user_answers"] = []
+                st.session_state["evaluations"] = []
+        
+                # Set a flag to trigger new generation
+                st.session_state["generate_new_set"] = True
 
         
         url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
