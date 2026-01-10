@@ -255,10 +255,11 @@ Your target audience is residents.
 Ensure the questions are **proportional across the manual**, covering all major topics.
 Make sure that you do not only focus on the content at the beginning of the manual.
 Focus on clinical relevance, and if surgical content exists, include surgical presentation, approach, and management.
-Avoid repeating questions from any previous set.
-Avoid generating new questions with a similar topic to any previous set, unless all major topics from the manual have been covered. For instance, if there is a question on surgical airway, do not ask another question on surgical airway unless all other topics from the manual have already been covered.
+Do NOT generate questions in the same order as the manual.
+Do NOT select topics based on their position in the text.
+Randomly sample from the full topic list.
+Do NOT generate new questions with a similar topic to any previous set, unless all major topics from the manual have been covered. For instance, if there is a question on surgical airway, do not ask another question on surgical airway unless all other topics from the manual have already been covered.
 Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
-You can randomize the order in which the questions appear so that the user cannot associate the first question with the first part of the manual and the last question with the last part of the manual.
 Return ONLY JSON in this format:
 [
   {{"question": "string", "answer_key": "string"}}
