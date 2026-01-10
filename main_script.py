@@ -592,9 +592,9 @@ QUESTIONS AND RESPONSES:
                         st.markdown("---")
 
         if st.session_state.get("all_question_sets"):
-            with st.expander("📚 Topics Covered So Far"):
+            with st.expander(bilingual_text("📚 Topics Covered So Far")):
                 for used_topic_item in get_used_topics():
-                    st.write(used_topic_item)
+                    st.write(bilingual_text(used_topic_item))
 
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
