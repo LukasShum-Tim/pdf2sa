@@ -401,37 +401,6 @@ TEXT:
 
             st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
-        # -------------------------------
-        # Bilingual translation
-        # -------------------------------
-        """bilingual_questions = []
-
-        if target_language_name == "English":
-            for q in all_questions:
-                q_en = q.get("question", "")
-                a_en = q.get("answer_key", "")
-                bilingual_questions.append({
-                    "question_en": q_en,
-                    "answer_key_en": a_en,
-                })
-        else:
-            for i, q in enumerate(all_questions):
-                q_en = q.get("question", "")
-                a_en = q.get("answer_key", "")
-                q_trans = safe_translate(q_en, target_lang_code)
-                a_trans = safe_translate(a_en, target_lang_code)
-                bilingual_questions.append({
-                    "question_en": q_en,
-                    "question_translated": q_trans,
-                    "answer_key_en": a_en,
-                    "answer_key_translated": a_trans
-                })
-                progress.progress(60 + int((i+1)/len(all_questions)*30), text=bilingual_text("Translating..."))
-
-        # -------------------------------
-        # Save to session state
-        # -------------------------------
-        st.session_state["questions"] = bilingual_questions"""
         st.session_state["user_answers"] = [""] * len(bilingual_questions)
         progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
 
