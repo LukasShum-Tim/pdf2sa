@@ -544,3 +544,7 @@ QUESTIONS AND RESPONSES:
                         st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                         st.markdown(f"**Model Answer ({target_language_name}):** {r.get('model_answer_translated', '')}")
                         st.markdown("---")
+
+        url = "https://forms.gle/CWKRqptQhpdLKaj8A"
+        st.write("check out this [link](%s)" % url)
+        st.markdown("check out this [link](%s)" % url)
