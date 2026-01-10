@@ -605,21 +605,21 @@ QUESTIONS AND RESPONSES:
                 for used_topic_item in get_used_topics():
                     st.write(used_topic_item)
 
-# -------------------------------
-# NEW BUTTON: Generate a new set of questions
-# -------------------------------
-if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
-    st.session_state["questions"] = []
-    st.session_state["user_answers"] = []
-    st.session_state["evaluations"] = []
-    st.session_state["generate_new_set"] = True
-    st.rerun()
-
-        
-url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
-url_students = "https://forms.gle/CWKRqptQhpdLKaj8A"
-st.write(bilingual_text("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
-st.markdown(bilingual_text("Feedback form for instructors:"))
-st.markdown(url_instructors)
-st.markdown(bilingual_text("Feedback form for students:"))
-st.markdown(url_students)
+    # -------------------------------
+    # NEW BUTTON: Generate a new set of questions
+    # -------------------------------
+    if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
+        st.session_state["questions"] = []
+        st.session_state["user_answers"] = []
+        st.session_state["evaluations"] = []
+        st.session_state["generate_new_set"] = True
+        st.rerun()
+    
+            
+    url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
+    url_students = "https://forms.gle/CWKRqptQhpdLKaj8A"
+    st.write(bilingual_text("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
+    st.markdown(bilingual_text("Feedback form for instructors:"))
+    st.markdown(url_instructors)
+    st.markdown(bilingual_text("Feedback form for students:"))
+    st.markdown(url_students)
