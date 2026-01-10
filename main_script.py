@@ -253,8 +253,10 @@ You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
 Your target audience is residents.
 Ensure the questions are **proportional across the manual**, covering all major topics.
+Make sure that you do not only focus on the content at the beginning of the manual.
 Focus on clinical relevance, and if surgical content exists, include surgical presentation, approach, and management.
 Avoid repeating questions from any previous set.
+Avoid generating questions with a similar topic to any previous set, unless all major topics from the manual have been covered.
 Structure your questions like a Royal College of Physicians and Surgeons oral boards examiner.
 Return ONLY JSON in this format:
 [
