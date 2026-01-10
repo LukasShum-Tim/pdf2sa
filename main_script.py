@@ -29,6 +29,9 @@ st.markdown("If you are using a mobile device, make sure to use a pdf file that 
 # -------------------------------
 # SESSION STATE INITIALIZATION
 # -------------------------------
+if "generate_new_set" not in st.session_state:
+    st.session_state["generate_new_set"] = False
+
 if "questions" not in st.session_state:
     st.session_state["questions"] = []
 
@@ -401,7 +404,7 @@ TEXT:
         # -------------------------------
         # Bilingual translation
         # -------------------------------
-        bilingual_questions = []
+        """bilingual_questions = []
 
         if target_language_name == "English":
             for q in all_questions:
@@ -428,7 +431,7 @@ TEXT:
         # -------------------------------
         # Save to session state
         # -------------------------------
-        st.session_state["questions"] = bilingual_questions
+        st.session_state["questions"] = bilingual_questions"""
         st.session_state["user_answers"] = [""] * len(bilingual_questions)
         progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
 
@@ -605,15 +608,12 @@ QUESTIONS AND RESPONSES:
         # -------------------------------
         # NEW BUTTON: Generate a new set of questions
         # -------------------------------
-        if st.session_state.get("pdf_text"):
-            if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
-                # Clear old questions, answers, evaluations
-                st.session_state["questions"] = []
-                st.session_state["user_answers"] = []
-                st.session_state["evaluations"] = []
-        
-                # Set a flag to trigger new generation
-                st.session_state["generate_new_set"] = True
+        if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
+            st.session_state["questions"] = []
+            st.session_state["user_answers"] = []
+            st.session_state["evaluations"] = []
+            st.session_state["generate_new_set"] = True
+            st.rerun()
 
         
         url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
