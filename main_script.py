@@ -582,6 +582,15 @@ QUESTIONS AND RESPONSES:
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
         st.session_state["generate_new_set"] = True
+    
+        # Clear all per-question audio + text state
+        keys_to_delete = [
+            k for k in st.session_state.keys()
+            if k.startswith(("audio_input_", "transcriptions_", "last_audio_hash_", "ans_"))
+        ]
+        for k in keys_to_delete:
+            del st.session_state[k]
+    
         st.rerun()
     
             
