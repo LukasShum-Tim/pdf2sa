@@ -65,6 +65,7 @@ def safe_translate(text, target_language_code):
                 - The translation MUST be appropriate for residents, physicians, and surgeons
                 - Do NOT translate word-for-word
                 - Preserve correct medical terminology and meaning
+                - Some of the 
 
                 TASK:
                 Translate the following text into {target_language_code}:
@@ -87,9 +88,42 @@ def safe_translate(text, target_language_code):
             return translated.text
     except Exception:
         pass
-        
+
     return text
 
+#Google translate first
+def ui_translate(text, target_language_code):
+    """Translate text safely with fallback to ChatGPT and skip English."""
+    if not text or not text.strip():
+        return text
+    if target_language_code == "en":
+        return text
+    try:
+        translated = translator.translate(text, dest=target_language_code)
+        if translated and hasattr(translated, "text"):
+            return translated.text
+    except Exception:
+        pass
+        if target_language_code == "en":
+        return text
+    
+    try:
+        prompt = f"""TASK:
+                Translate the following text into {target_language_code}:
+                
+                {text}
+                """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        return response.choices[0].message.content.strip()    
+    except Exception:
+        pass
+    return text
+    
 # -------------------------------
 # LANGUAGE SELECTION
 # -------------------------------
@@ -212,10 +246,17 @@ def bilingual_text(en_text):
     translated = safe_translate(en_text, target_lang_code)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
+def bilingual_text_ui(en_text):
+    """Display English + translated text, unless English is selected. Function specifically for not medically important information."""
+    if target_lang_code == "en":
+        return en_text
+    translated = ui_translate(en_text, target_lang_code)
+    return f"{en_text}\n**({target_language_name})**: {translated}"
+
 # -------------------------------
 # PDF UPLOAD
 # -------------------------------
-uploaded_file = st.file_uploader(bilingual_text("📄 Upload a PDF file"), type=["pdf"])
+uploaded_file = st.file_uploader(bilingual_text_ui("📄 Upload a PDF file"), type=["pdf"])
 
 def extract_text_from_pdf(uploaded_file):
     text = ""
@@ -229,7 +270,7 @@ if uploaded_file:
         pdf_text = extract_text_from_pdf(uploaded_file)
         st.session_state["pdf_text"] = pdf_text
         st.session_state["uploaded_file_name"] = uploaded_file.name
-        st.success(bilingual_text("✅ PDF uploaded successfully!"))
+        st.success(bilingual_text_ui("✅ PDF uploaded successfully!"))
     else:
         pdf_text = st.session_state["pdf_text"]
 
@@ -274,12 +315,12 @@ def get_used_topics():
 # QUESTION GENERATION (Single GPT Call, Bilingual, Previous Sets)
 # -------------------------------
 if pdf_text:
-    st.subheader(bilingual_text("🧩 Step 1: Generate Short-Answer Questions"))
+    st.subheader(bilingual_text_ui("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider(bilingual_text("Number of questions to generate:"), 1, 10, 3)
+    num_questions = st.slider(bilingual_text_ui("Number of questions to generate:"), 1, 10, 3)
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
-    if st.button(bilingual_text("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
+    if st.button(bilingual_text_ui("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
     
         # Clear the flag
         if st.session_state.get("generate_new_set"):
@@ -289,7 +330,7 @@ if pdf_text:
         pdf_text = st.session_state["pdf_text"]
     
         # Initialize progress bar
-        progress = st.progress(0, text=bilingual_text("Generating questions... please wait"))
+        progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
@@ -345,10 +386,10 @@ SOURCE TEXT:
                 if item.get("question") and item.get("answer_key")
             ]
             
-            progress.progress(50, text=bilingual_text("Questions generated. Translating..."))
+            progress.progress(50, text=bilingual_text_ui("Questions generated. Translating..."))
 
         except Exception as e:
-            st.error(bilingual_text(f"⚠️ Question generation failed: {e}"))
+            st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
             all_questions = []
 
         if all_questions:
@@ -403,7 +444,7 @@ TEXT:
             # -------------------------------
             st.session_state["questions"] = bilingual_questions
             st.session_state["user_answers"] = [""] * len(bilingual_questions)
-            progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+            progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
 
             # -------------------------------
             # 4️⃣ Store previous sets
@@ -419,10 +460,10 @@ TEXT:
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
 
-            st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+            st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
         st.session_state["user_answers"] = [""] * len(bilingual_questions)
-        progress.progress(100, text=bilingual_text("✅ Done! Questions ready."))
+        progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
 
         # -------------------------------
         # Store previous sets for consultation
@@ -436,13 +477,13 @@ TEXT:
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
         })
         
-        st.success(bilingual_text(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+        st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
 if st.session_state["questions"]:
-    st.subheader(bilingual_text("🧠 Step 2: Answer the Questions"))
+    st.subheader(bilingual_text_ui("🧠 Step 2: Answer the Questions"))
 
     questions = st.session_state["questions"]
 
@@ -457,7 +498,7 @@ if st.session_state["questions"]:
         else:    
             st.markdown(f"**({target_language_name}):** {q.get('question_translated', '')}")
 
-        st.markdown(bilingual_text("🎤 Dictate your answer (you can record multiple times):"))
+        st.markdown(bilingual_text_ui("🎤 Dictate your answer (you can record multiple times):"))
         qid = st.session_state["question_set_id"]
         audio_data = st.audio_input(
             "",
@@ -479,7 +520,7 @@ if st.session_state["questions"]:
                 audio_hash = hashlib.sha256(audio_bytes).hexdigest()
         
                 if st.session_state.get(last_hash_key) == audio_hash:
-                    st.info(bilingual_text("This recording was already transcribed."), icon="ℹ️")
+                    st.info(bilingual_text_ui("This recording was already transcribed."), icon="ℹ️")
                 else:
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
                         tmp_file.write(audio_bytes)
@@ -507,14 +548,14 @@ if st.session_state["questions"]:
                         st.session_state["user_answers"][i] = new_text
                         st.session_state[last_hash_key] = audio_hash
         
-                        st.success(bilingual_text("🎧 Dictation appended to your answer."), icon="🎤")
+                        st.success(bilingual_text_ui("🎧 Dictation appended to your answer."), icon="🎤")
                     else:
-                        st.warning(bilingual_text("⚠️ Transcription returned empty text."))
+                        st.warning(bilingual_text_ui("⚠️ Transcription returned empty text."))
         
             except Exception as e:
-                st.error(bilingual_text(f"⚠️ Audio transcription failed: {e}"))
+                st.error(bilingual_text_ui(f"⚠️ Audio transcription failed: {e}"))
 
-        label = bilingual_text("✏️ Your Answer:")
+        label = bilingual_text_ui("✏️ Your Answer:")
         key = f"ans_{qid}_{i}"  # unified key
         existing_text = st.session_state.get(key, "").strip()
         if existing_text:
@@ -534,7 +575,8 @@ if st.session_state["questions"]:
     # -------------------------------
     def score_short_answers(user_answers, questions):
         grading_prompt = f"""
-You are a Royal College of Physicians and Surgeons oral boards examiner. You are examining the chief residents' answers to oral board exam questions. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
+You are a multilingual Royal College of Physicians and Surgeons oral boards examiner. You are examining the chief residents' answers to oral board exam questions. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
+The chief residents' answers can be provided in a different language from English.
 Return ONLY JSON:
 [
   {{
@@ -565,11 +607,11 @@ QUESTIONS AND RESPONSES:
                 r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
             return results
         except Exception as e:
-            st.error(bilingual_text(f"⚠️ Scoring failed: {e}"))
+            st.error(bilingual_text_ui(f"⚠️ Scoring failed: {e}"))
             return []
 
-    if st.button(bilingual_text("🚀 Evaluate My Answers")):
-        with st.spinner(bilingual_text("Evaluating your answers...")):
+    if st.button(bilingual_text_ui("🚀 Evaluate My Answers")):
+        with st.spinner(bilingual_text_ui("Evaluating your answers...")):
             results = score_short_answers(user_answers, questions)
             st.session_state['evaluations'] = results
 
@@ -581,15 +623,15 @@ QUESTIONS AND RESPONSES:
             max_score = len(results) * 2  # each question max 2 points
             percentage = round(total_score / max_score * 100, 1)
     
-            st.success(bilingual_text("✅ Evaluation complete!"))
+            st.success(bilingual_text_ui("✅ Evaluation complete!"))
     
             # -------------------------------
             # Display total score
             # -------------------------------
-            st.markdown(f"### 🏆 {bilingual_text('Total Score')}: {total_score}/{max_score} ({percentage}%)")
+            st.markdown(f"### 🏆 {bilingual_text_ui('Total Score')}: {total_score}/{max_score} ({percentage}%)")
             
-            st.success(bilingual_text("✅ Evaluation complete!"))
-            with st.expander(bilingual_text("📊 Detailed Feedback")):
+            st.success(bilingual_text_ui("✅ Evaluation complete!"))
+            with st.expander(bilingual_text_ui("📊 Detailed Feedback")):
                 for i, (q, r) in enumerate(zip(questions, results)):
                     st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
                     
@@ -609,16 +651,16 @@ QUESTIONS AND RESPONSES:
                         st.markdown("---")
 
         if st.session_state.get("all_question_sets"):
-            with st.expander(bilingual_text("📚 Topics Covered So Far")):
+            with st.expander(bilingual_text_ui("📚 Topics Covered So Far")):
                 for used_topic_item in get_used_topics():
-                    st.write(bilingual_text(used_topic_item))
+                    st.write(bilingual_text_ui(used_topic_item))
 
 
         # -------------------------------
         # Previous Question Sets Viewer
         # -------------------------------
         if st.session_state.get("all_question_sets"):
-            st.subheader(bilingual_text("📚 Retry Previous Question Sets"))
+            st.subheader(bilingual_text_ui("📚 Retry Previous Question Sets"))
         
             # Build a dictionary of preview labels -> sets
             prev_sets = {}
@@ -634,14 +676,14 @@ QUESTIONS AND RESPONSES:
         
             # Dropdown
             selected_set_label = st.selectbox(
-                bilingual_text("Select a previous question set to view:"),
+                bilingual_text_ui("Select a previous question set to view:"),
                 options=list(prev_sets.keys())
             )
             
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
     # -------------------------------
-    if st.button(bilingual_text("🔄 Generate a New Set of Questions")):
+    if st.button(bilingual_text_ui("🔄 Generate a New Set of Questions")):
         st.session_state["questions"] = []
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
@@ -652,8 +694,8 @@ QUESTIONS AND RESPONSES:
             
     url_instructors = "https://forms.gle/GdMqpvikomBRTcvJ6"
     url_students = "https://forms.gle/CWKRqptQhpdLKaj8A"
-    st.write(bilingual_text("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
-    st.markdown(bilingual_text("Feedback form for instructors:"))
+    st.write(bilingual_text_ui("Thank you for trying this multilingual short answer question generator! Please click on the following links to provide feedback to help improve this tool:"))
+    st.markdown(bilingual_text_ui("Feedback form for instructors:"))
     st.markdown(url_instructors)
-    st.markdown(bilingual_text("Feedback form for students:"))
+    st.markdown(bilingual_text_ui("Feedback form for students:"))
     st.markdown(url_students)
