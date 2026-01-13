@@ -53,7 +53,7 @@ def _looks_english(text):
     return hits >= 2
 
 @st.cache_data(show_spinner=False)
-def safe_translate(text, target_language_code, target_language_name):
+def safe_translate(text, target_language_name, target_language_code):
     """Translate text safely with fallback to google translate and skip English."""
     if not text or not text.strip():
         return text
@@ -252,14 +252,14 @@ def bilingual_text(en_text):
     """Display English + translated text, unless English is selected."""
     if target_lang_code == "en":
         return en_text
-    translated = safe_translate(en_text, target_lang_code)
+    translated = safe_translate(en_text, target_language_name)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
 def bilingual_text_ui(en_text):
     """Display English + translated text, unless English is selected. Function specifically for not medically important information."""
     if target_lang_code == "en":
         return en_text
-    translated = ui_translate(en_text, target_lang_code)
+    translated = ui_translate(en_text, target_language_name)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
 # -------------------------------
@@ -612,8 +612,8 @@ QUESTIONS AND RESPONSES:
             raw = re.sub(r"```(?:json)?|```", "", raw).strip()
             results = json.loads(raw)
             for r in results:
-                r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_lang_code)
-                r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_lang_code)
+                r["feedback_translated"] = safe_translate(r.get("feedback", ""), target_language_name)
+                r["model_answer_translated"] = safe_translate(r.get("model_answer", ""), target_language_name)
             return results
         except Exception as e:
             st.error(bilingual_text_ui(f"⚠️ Scoring failed: {e}"))
