@@ -467,6 +467,23 @@ TEXT:
 
             st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
+        st.session_state["user_answers"] = [""] * len(bilingual_questions)
+        progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
+
+        # -------------------------------
+        # Store previous sets for consultation
+        # -------------------------------
+        if "all_question_sets" not in st.session_state:
+            st.session_state["all_question_sets"] = []
+        
+        # Append a copy of the current set
+        st.session_state["all_question_sets"].append({
+            "questions": bilingual_questions,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
+        
+        st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
 # -------------------------------
