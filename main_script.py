@@ -666,7 +666,10 @@ QUESTIONS AND RESPONSES:
         # -------------------------------
         # Previous Question Sets Viewer
         # -------------------------------
-        """
+    debug == True
+    if debug == True:
+        pass
+    else:
         if st.session_state.get("all_question_sets"):
         
             st.subheader(bilingual_text_ui("📚 Retry Previous Question Sets"))
@@ -717,7 +720,7 @@ QUESTIONS AND RESPONSES:
                     st.session_state["evaluations"] = []
                     st.session_state["mode"] = "retry"
                     st.rerun()
-                """
+                
 
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
