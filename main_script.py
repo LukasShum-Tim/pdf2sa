@@ -684,15 +684,22 @@ QUESTIONS AND RESPONSES:
                     prev_set_labels.append(f"Set {sid+1}: {preview_text} ({s['timestamp']})")
         
                 # Selectbox: display by index
-                selected_idx = st.selectbox(
+                if 0 <= selected_idx < len(prev_set_ids):
+                    selected_id = prev_set_ids[selected_idx]
+                    selected_set = prev_sets[selected_id]
+                    st.session_state["active_prev_id"] = selected_id
+                else:
+                    st.error("⚠️ Selected index is out of range. Please try again.")
+                    st.stop()
+                selected_id = st.selectbox(
                     bilingual_text_ui("Select a previous question set to view:"),
-                    options=list(range(len(prev_set_ids))),
-                    index=prev_set_ids.index(active_id),
-                    format_func=lambda i: prev_set_labels[i],
+                    options=prev_set_ids,
+                    format_func=lambda sid: f"Set {sid+1}: " + " | ".join(
+                        q.get("question_en","") for q in prev_sets[sid]["questions"][:3]
+                    )[:100] + f"... ({prev_sets[sid]['timestamp']})",
+                    index=prev_set_ids.index(st.session_state.get("active_prev_id", prev_set_ids[-1])),
                     key="selected_prev_set"
                 )
-        
-                selected_id = prev_set_ids[selected_idx]
                 selected_set = prev_sets[selected_id]
                 st.session_state["active_prev_id"] = selected_id
         
