@@ -22,9 +22,14 @@ st.set_page_config(
     layout="centered"
 )
 
-st.title("🧠 Multilingual Oral Board Exam Trainer")
-st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
-st.markdown("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error.")
+if target_lang_code != "en":
+    st.title(bilingual_text_ui("🧠 Multilingual Oral Board Exam Trainer"))
+    st.markdown(bilingual_text_ui("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback."))
+    st.markdown(bilingual_text_ui("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error."))
+else:
+    st.title("🧠 Multilingual Oral Board Exam Trainer")
+    st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
+    st.markdown("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error.")
 
 # -------------------------------
 # SESSION STATE INITIALIZATION
@@ -47,45 +52,56 @@ if "evaluations" not in st.session_state:
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
+def _looks_english(text):
+    english_words = ["the", "and", "identify", "make", "open"]
+    hits = sum(word in text.lower() for word in english_words)
+    return hits >= 2
+
 @st.cache_data(show_spinner=False)
-def safe_translate(text, target_language_code):
+def safe_translate(text, target_language_code, target_language_name):
     """Translate text safely with fallback to google translate and skip English."""
     if not text or not text.strip():
         return text
-        
+                
     # ✅ Skip translation for English
     if target_language_code == "en":
         return text
     try:
         prompt = f"""
-                ROLE:
-                You are a helpful multilingual medical educator who translates text into a target language with precise medical accuracy.
-                
-                 RULES:
-                - The translation MUST be appropriate for residents, physicians, and surgeons
-                - Do NOT translate word-for-word
-                - Preserve correct medical terminology and meaning
-                - Some of the 
-
-                TASK:
-                Translate the following text into {target_language_code}:
-                
-                {text}
-                """
+        You are a professional medical translator.
+        
+        TASK:
+        Translate the following medical text into **{target_language_name}**.
+        
+        STRICT RULES:
+        - Output MUST be written entirely in {target_language_name}
+        - DO NOT keep English sentences
+        - Medical terms may remain Latin-based if appropriate
+        - Do NOT summarize or paraphrase
+        - If unsure, still translate
+        
+        TEXT:
+        {text}
+        """
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
-        return response.choices[0].message.content.strip()    
+        translated = response.choices[0].message.content.strip()
+
+        # 🔎 Post-check: still looks English?
+        if _looks_english(translated):
+            raise ValueError("GPT returned English")
+
+        return translated 
     except Exception:
         pass
         
     try:
         translated = translator.translate(text, dest=target_language_code)
-        if translated and hasattr(translated, "text"):
-            return translated.text
+        return translated.text if translated else text
     except Exception:
         pass
 
