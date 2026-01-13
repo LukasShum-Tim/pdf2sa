@@ -406,7 +406,6 @@ SOURCE TEXT:
         except Exception as e:
             st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
             all_questions = []
-            return
 
         if all_questions:
             # -------------------------------
