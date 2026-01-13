@@ -53,6 +53,9 @@ if "mode" not in st.session_state:
 if "current_set_id" not in st.session_state:
     st.session_state["current_set_id"] = None
 
+if "generate_now" not in st.session_state:
+    st.session_state["generate_now"] = False
+
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
@@ -336,13 +339,13 @@ if pdf_text:
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text_ui("⚡ Generate Questions")):
-        st.session_state["mode"] = "generate"
+        st.session_state["generate_now"] = True
         st.session_state["question_set_id"] += 1
         st.rerun()
             
 
-    if st.session_state.get("mode") == "generate":
-        st.session_state["mode"] = "idle"
+    if st.session_state.get("generate_now"):
+        st.session_state["generate_now"] = False
     
         pdf_text = st.session_state["pdf_text"]
         progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
