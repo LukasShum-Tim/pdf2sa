@@ -682,7 +682,8 @@ QUESTIONS AND RESPONSES:
                     if len(preview_text) > 100:
                         preview_text = preview_text[:100] + "..."
                     prev_set_labels.append(f"Set {sid+1}: {preview_text} ({s['timestamp']})")
-        
+
+                selected_idx = prev_set_ids.index(st.session_state.get("active_prev_id", prev_set_ids[-1]))
                 # Selectbox: display by index
                 if 0 <= selected_idx < len(prev_set_ids):
                     selected_id = prev_set_ids[selected_idx]
