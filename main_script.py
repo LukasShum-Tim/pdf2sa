@@ -704,7 +704,7 @@ QUESTIONS AND RESPONSES:
                         st.session_state["question_set_id"] += 1
                         st.session_state["mode"] = "retry"
                         st.experimental_rerun()
-                 else:
+                else:
                     st.warning(bilingual_text_ui("⚠️ Selected question set is no longer available."))
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
