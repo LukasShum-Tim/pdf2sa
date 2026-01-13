@@ -104,8 +104,6 @@ def ui_translate(text, target_language_code):
             return translated.text
     except Exception:
         pass
-        if target_language_code == "en":
-        return text
     
     try:
         prompt = f"""TASK:
