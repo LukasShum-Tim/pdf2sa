@@ -666,12 +666,16 @@ QUESTIONS AND RESPONSES:
                     preview_text = preview_text[:100] + "..."
                 label = f"Set {idx+1}: {preview_text} ({s.get('timestamp','')})"
                 prev_sets[label] = s
+
+            # List of labels for the selectbox
+            prev_set_labels = list(prev_sets.keys())
             
             if not prev_sets:
                 st.info(bilingual_text_ui("No previous question sets available."))
             else:
-                if st.session_state.get("active_prev_label") in prev_sets:
-                    default_idx = list(prev_sets.keys()).index(st.session_state["active_prev_label"])
+                active_label = st.session_state.get("active_prev_label")
+                if active_label in prev_sets:
+                    default_idx = prev_set_labels.index(active_label)
 
                 else:
                     default_idx = 0
