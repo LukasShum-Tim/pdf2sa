@@ -666,7 +666,7 @@ QUESTIONS AND RESPONSES:
         # -------------------------------
         # Previous Question Sets Viewer
         # -------------------------------
-    debug == True
+    debug = True
     if debug == True:
         pass
     else:
