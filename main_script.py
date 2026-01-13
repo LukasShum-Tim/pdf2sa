@@ -330,10 +330,18 @@ if pdf_text:
 
     num_questions = st.slider(bilingual_text_ui("Number of questions to generate:"),1, 10, key="num_questions")
 
+    if st.session_state.get("mode") == "generate":
+        st.session_state["mode"] = "idle"
+    
+        pdf_text = st.session_state["pdf_text"]
+        progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
+⬇️
+
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text_ui("⚡ Generate Questions")):
         st.session_state["mode"] = "generate"
         st.session_state["question_set_id"] += 1
+        st.rerun()
         
         # Clear the flag
         if st.session_state.get("generate_new_set"):
