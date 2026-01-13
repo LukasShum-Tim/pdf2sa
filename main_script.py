@@ -335,7 +335,6 @@ if pdf_text:
     
         pdf_text = st.session_state["pdf_text"]
         progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
-⬇️
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text_ui("⚡ Generate Questions")):
