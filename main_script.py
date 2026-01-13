@@ -117,11 +117,7 @@ def ui_translate(text, target_language_name):
         pass
     
     try:
-        prompt = f"""TASK:
-                Translate the following text into {target_language_name}:
-                
-                {text}
-                """
+        prompt = f"""Translate this text into {target_language_name}:\n{text}"""
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
