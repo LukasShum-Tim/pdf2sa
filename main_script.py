@@ -331,19 +331,22 @@ if pdf_text:
     num_questions = st.slider(bilingual_text_ui("Number of questions to generate:"),1, 10, key="num_questions")
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
-    if st.button(bilingual_text_ui("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
+    if st.button(bilingual_text_ui("⚡ Generate Questions")):
         st.session_state["mode"] = "generate"
         st.session_state["question_set_id"] += 1
         
         # Clear the flag
         if st.session_state.get("generate_new_set"):
             st.session_state["generate_new_set"] = False
-    
-        # Use existing pdf_text from session_state
-        pdf_text = st.session_state["pdf_text"]
-    
-        # Initialize progress bar
-        progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
+
+        if st.session_state.get("mode") == "generate":
+            st.session_state["mode"] = "idle"
+            
+            # Use existing pdf_text from session_state
+            pdf_text = st.session_state["pdf_text"]
+        
+            # Initialize progress bar
+            progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
@@ -534,7 +537,7 @@ if st.session_state["questions"]:
         
                     if dictated_text:
                         # ✅ Append to CURRENT text area value
-                        existing_text = st.session_state.get(f"ans_{i}", "").strip()
+                        existing_text = st.session_state.get(f"ans_{qid}_{i}", "").strip()
                         if existing_text:
                             new_text = f"{existing_text} {dictated_text}"
                         else:
@@ -698,7 +701,7 @@ QUESTIONS AND RESPONSES:
         st.session_state["questions"] = []
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
-        st.session_state["generate_new_set"] = True
+        st.session_state["mode"] = "generate"
         st.session_state["question_set_id"] += 1
         st.rerun()
     
