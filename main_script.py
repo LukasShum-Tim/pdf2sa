@@ -646,7 +646,6 @@ QUESTIONS AND RESPONSES:
                 for used_topic_item in get_used_topics():
                     st.write(bilingual_text_ui(used_topic_item))
 
-
         # -------------------------------
         # Previous Question Sets Viewer
         # -------------------------------
@@ -671,13 +670,20 @@ QUESTIONS AND RESPONSES:
             if selected_label:
                 selected_set = prev_sets[selected_label]
         
-                with st.expander(bilingual_text_ui("📄 View Selected Question Set"), expanded=True):
+                with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
                     for i, q in enumerate(selected_set["questions"]):
                         st.markdown(f"**Q{i+1}:** {q.get('question_en','')}")
                         if target_language_code != "en":
                             st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
                         st.markdown("---")
-            
+
+                if st.button(bilingual_text_ui("🔁 Retry This Question Set")):
+                    st.session_state["questions"] = selected_set["questions"]
+                    st.session_state["user_answers"] = [""] * len(selected_set["questions"])
+                    st.session_state["evaluations"] = []
+                    st.session_state["question_set_id"] += 1
+                    st.rerun()
+
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
     # -------------------------------
@@ -685,7 +691,7 @@ QUESTIONS AND RESPONSES:
         st.session_state["questions"] = []
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
-        st.session_state["generate_new_set"] = True
+        
         st.session_state["question_set_id"] += 1
         st.rerun()
     
