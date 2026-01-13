@@ -22,14 +22,9 @@ st.set_page_config(
     layout="centered"
 )
 
-if target_lang_code != "en":
-    st.title(bilingual_text_ui("🧠 Multilingual Oral Board Exam Trainer"))
-    st.markdown(bilingual_text_ui("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback."))
-    st.markdown(bilingual_text_ui("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error."))
-else:
-    st.title("🧠 Multilingual Oral Board Exam Trainer")
-    st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
-    st.markdown("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error.")
+st.title("🧠 Multilingual Oral Board Exam Trainer")
+st.markdown("Upload a PDF, generate short-answer questions, answer in your chosen language, and get bilingual feedback.")
+st.markdown("If you are using a mobile device, make sure to use a pdf file that is downloaded locally, and not uploaded from a Cloud Drive to prevent an upload error.")
 
 # -------------------------------
 # SESSION STATE INITIALIZATION
