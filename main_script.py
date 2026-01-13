@@ -80,6 +80,7 @@ def safe_translate(text, target_language_name):
         - Medical terms may remain Latin-based if appropriate
         - Do NOT summarize or paraphrase
         - If unsure, still translate
+        - DO NOT write in English
         
         TEXT:
         {text}
@@ -337,7 +338,7 @@ if pdf_text:
         st.rerun()
             
 
-    if st.session_state.get("mode") == "generate":
+    if st.session_state.get("mode") == "generate" and st.session_state.get("questions") == []:
         st.session_state["mode"] = "idle"
     
         pdf_text = st.session_state["pdf_text"]
