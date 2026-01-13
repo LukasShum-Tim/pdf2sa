@@ -690,7 +690,7 @@ QUESTIONS AND RESPONSES:
                     st.session_state["evaluations"] = []
                     st.session_state["question_set_id"] += 1
                     st.session_state["mode"] = "retry"
-                    st.rerun()
+                    
 
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
