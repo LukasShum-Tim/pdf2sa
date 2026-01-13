@@ -53,7 +53,7 @@ def _looks_english(text):
     return hits >= 2
 
 @st.cache_data(show_spinner=False)
-def safe_translate(text, target_language_name, target_language_code):
+def safe_translate(text, target_language_name):
     """Translate text safely with fallback to google translate and skip English."""
     if not text or not text.strip():
         return text
