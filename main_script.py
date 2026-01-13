@@ -692,17 +692,37 @@ QUESTIONS AND RESPONSES:
                 else:
                     st.error("⚠️ Selected index is out of range. Please try again.")
                     st.stop()
-                selected_id = st.selectbox(
-                    bilingual_text_ui("Select a previous question set to view:"),
-                    options=prev_set_ids,
-                    format_func=lambda sid: f"Set {sid+1}: " + " | ".join(
-                        q.get("question_en","") for q in prev_sets[sid]["questions"][:3]
-                    )[:100] + f"... ({prev_sets[sid]['timestamp']})",
-                    index=prev_set_ids.index(st.session_state.get("active_prev_id", prev_set_ids[-1])),
-                    key="selected_prev_set"
-                )
-                selected_set = prev_sets[selected_id]
-                st.session_state["active_prev_id"] = selected_id
+                    
+                if st.session_state.get("all_question_sets"):
+                    prev_sets = {s["set_id"]: s for s in st.session_state["all_question_sets"]}
+                    prev_set_ids = list(prev_sets.keys())
+                    
+                    if not prev_set_ids:
+                        st.info("No previous question sets available.")
+                    else:
+                        # Validate active_prev_id
+                        active_id = st.session_state.get("active_prev_id")
+                        if active_id not in prev_set_ids:
+                            active_id = prev_set_ids[-1]  # fallback to latest set
+                        
+                        # Use active_id for the selectbox index
+                        selected_id = st.selectbox(
+                            "Select a previous question set to view:",
+                            options=prev_set_ids,
+                            format_func=lambda sid: f"Set {sid+1}: " + " | ".join(
+                                q.get("question_en","") for q in prev_sets[sid]["questions"][:3]
+                            )[:100] + f"... ({prev_sets[sid]['timestamp']})",
+                            index=prev_set_ids.index(active_id),
+                            key="selected_prev_set"
+                        )
+                        selected_set = prev_sets.get(selected_id)
+                        
+                        if not selected_set:
+                            st.error("⚠️ Selected set no longer exists.")
+                            st.stop()
+                        
+                        st.session_state["active_prev_id"] = selected_id
+
         
                 # Preview selected set
                 with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
