@@ -677,7 +677,8 @@ QUESTIONS AND RESPONSES:
                             st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
                         st.markdown("---")
 
-                if st.button(bilingual_text_ui("🔁 Retry This Question Set")):
+                if st.session_state.get("active_prev_label") != selected_label:
+                    st.session_state["active_prev_label"] = selected_label
                     st.session_state["questions"] = selected_set["questions"]
                     st.session_state["user_answers"] = [""] * len(selected_set["questions"])
                     st.session_state["evaluations"] = []
