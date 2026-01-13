@@ -342,15 +342,11 @@ if pdf_text:
         st.session_state["question_set_id"] += 1
         st.rerun()
         
-        # Clear the flag
-    if st.session_state.get("generate_new_set"):
-        st.session_state["generate_new_set"] = False
-
-        # -------------------------------
-        # 1️⃣ Prompt GPT to generate all questions
-        # -------------------------------
-        used_topics = get_used_topics()
-        prompt = f"""
+    # -------------------------------
+    # 1️⃣ Prompt GPT to generate all questions
+    # -------------------------------
+    used_topics = get_used_topics()
+    prompt = f"""
 You are an expert medical educator.
 Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
 PREVIOUSLY USED TOPICS (avoid these unless no alternatives remain): {json.dumps(used_topics, indent=2)}
@@ -380,102 +376,102 @@ Return ONLY JSON in this format:
 SOURCE TEXT:
 {pdf_text}
 """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini-2025-04-14",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.8
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini-2025-04-14",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+        all_items = json.loads(raw)
+
+        # Normalize structure
+        all_questions = [
+            {
+                "topic": item.get("topic", "").strip(),
+                "question": item.get("question", "").strip(),
+                "answer_key": item.get("answer_key", "").strip()
+            }
+            for item in all_items
+            if item.get("question") and item.get("answer_key")
+        ]
+        
+        progress.progress(50, text=bilingual_text_ui("Questions generated. Translating..."))
+
+    except Exception as e:
+        st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
+        all_questions = []
+
+    if all_questions:
+        # -------------------------------
+        # 2️⃣ Bilingual translation (batched)
+        # -------------------------------
+        bilingual_questions = []
+
+        if target_language_name == "English":
+            for q in all_questions:
+                bilingual_questions.append({
+                    "question_en": q.get("question", ""),
+                    "answer_key_en": q.get("answer_key", "")
+                })
+        else:
+            # Prepare batch text for GPT translation to minimize API calls
+            batch_text = "\n\n".join(
+                [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
             )
-            raw = response.choices[0].message.content.strip()
-            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-            all_items = json.loads(raw)
-
-            # Normalize structure
-            all_questions = [
-                {
-                    "topic": item.get("topic", "").strip(),
-                    "question": item.get("question", "").strip(),
-                    "answer_key": item.get("answer_key", "").strip()
-                }
-                for item in all_items
-                if item.get("question") and item.get("answer_key")
-            ]
-            
-            progress.progress(50, text=bilingual_text_ui("Questions generated. Translating..."))
-
-        except Exception as e:
-            st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
-            all_questions = []
-
-        if all_questions:
-            # -------------------------------
-            # 2️⃣ Bilingual translation (batched)
-            # -------------------------------
-            bilingual_questions = []
-
-            if target_language_name == "English":
-                for q in all_questions:
-                    bilingual_questions.append({
-                        "question_en": q.get("question", ""),
-                        "answer_key_en": q.get("answer_key", "")
-                    })
-            else:
-                # Prepare batch text for GPT translation to minimize API calls
-                batch_text = "\n\n".join(
-                    [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
-                )
-                translation_prompt = f"""
+            translation_prompt = f"""
 Translate the following questions and answers into {target_language_name}.
 Return JSON in the same order with this format:
 [
-  {{"question_translated": "string", "answer_key_translated": "string"}}
+{{"question_translated": "string", "answer_key_translated": "string"}}
 ]
 
 TEXT:
 {batch_text}
 """
-                try:
-                    translation_resp = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[{"role": "user", "content": translation_prompt}],
-                        temperature=0
-                    )
-                    raw_trans = translation_resp.choices[0].message.content.strip()
-                    raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
-                    translations = json.loads(raw_trans)
-                except Exception:
-                    translations = [{}] * len(all_questions)
+            try:
+                translation_resp = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": translation_prompt}],
+                    temperature=0
+                )
+                raw_trans = translation_resp.choices[0].message.content.strip()
+                raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
+                translations = json.loads(raw_trans)
+            except Exception:
+                translations = [{}] * len(all_questions)
 
-                for q, t in zip(all_questions, translations):
-                    bilingual_questions.append({
-                        "question_en": q.get("question", ""),
-                        "answer_key_en": q.get("answer_key", ""),
-                        "question_translated": t.get("question_translated", ""),
-                        "answer_key_translated": t.get("answer_key_translated", "")
-                    })
+            for q, t in zip(all_questions, translations):
+                bilingual_questions.append({
+                    "question_en": q.get("question", ""),
+                    "answer_key_en": q.get("answer_key", ""),
+                    "question_translated": t.get("question_translated", ""),
+                    "answer_key_translated": t.get("answer_key_translated", "")
+                })
 
-            # -------------------------------
-            # 3️⃣ Save to session state
-            # -------------------------------
-            st.session_state["questions"] = bilingual_questions
-            st.session_state["user_answers"] = [""] * len(bilingual_questions)
-            progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
+        # -------------------------------
+        # 3️⃣ Save to session state
+        # -------------------------------
+        st.session_state["questions"] = bilingual_questions
+        st.session_state["user_answers"] = [""] * len(bilingual_questions)
+        progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
 
-            # -------------------------------
-            # 4️⃣ Store previous sets
-            # -------------------------------
-            if "all_question_sets" not in st.session_state:
-                st.session_state["all_question_sets"] = []
+        # -------------------------------
+        # 4️⃣ Store previous sets
+        # -------------------------------
+        if "all_question_sets" not in st.session_state:
+            st.session_state["all_question_sets"] = []
 
-            topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
-            
-            st.session_state["all_question_sets"].append({
-                "questions": bilingual_questions,
-                "topics": topics,
-                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-            })
+        topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
+        
+        st.session_state["all_question_sets"].append({
+            "questions": bilingual_questions,
+            "topics": topics,
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        })
 
-            st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+        st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
