@@ -95,7 +95,7 @@ def safe_translate(text, target_language_name, target_language_code):
         pass
         
     try:
-        translated = translator.translate(text, dest=target_language_code)
+        translated = translator.translate(text, dest=target_language_name)
         return translated.text if translated else text
     except Exception:
         pass
@@ -103,14 +103,14 @@ def safe_translate(text, target_language_name, target_language_code):
     return text
 
 #Google translate first
-def ui_translate(text, target_language_code):
+def ui_translate(text, target_language_name):
     """Translate text safely with fallback to ChatGPT and skip English."""
     if not text or not text.strip():
         return text
     if target_language_code == "en":
         return text
     try:
-        translated = translator.translate(text, dest=target_language_code)
+        translated = translator.translate(text, dest=target_language_name)
         if translated and hasattr(translated, "text"):
             return translated.text
     except Exception:
@@ -118,7 +118,7 @@ def ui_translate(text, target_language_code):
     
     try:
         prompt = f"""TASK:
-                Translate the following text into {target_language_code}:
+                Translate the following text into {target_language_name}:
                 
                 {text}
                 """
@@ -246,18 +246,18 @@ language_map = {
 }
 
 target_language_name = st.selectbox("🌍 Select your language:", list(language_map.keys()), index=0)
-target_lang_code = language_map[target_language_name]
+target_language_code = language_map[target_language_name]
 
 def bilingual_text(en_text):
     """Display English + translated text, unless English is selected."""
-    if target_lang_code == "en":
+    if target_language_code == "en":
         return en_text
     translated = safe_translate(en_text, target_language_name)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
 def bilingual_text_ui(en_text):
     """Display English + translated text, unless English is selected. Function specifically for not medically important information."""
-    if target_lang_code == "en":
+    if target_language_code == "en":
         return en_text
     translated = ui_translate(en_text, target_language_name)
     return f"{en_text}\n**({target_language_name})**: {translated}"
