@@ -44,6 +44,9 @@ if "user_answers" not in st.session_state:
 if "evaluations" not in st.session_state:
     st.session_state["evaluations"] = []
 
+if "selected_prev_set" not in st.session_state:
+    st.session_state["selected_prev_set"] = None
+
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
@@ -322,7 +325,7 @@ def get_used_topics():
 if pdf_text:
     st.subheader(bilingual_text_ui("🧩 Step 1: Generate Short-Answer Questions"))
 
-    num_questions = st.slider(bilingual_text_ui("Number of questions to generate:"), 1, 10, 3)
+    num_questions = st.slider(bilingual_text_ui("Number of questions to generate:"),1, 10, key="num_questions")
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text_ui("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
@@ -466,23 +469,6 @@ TEXT:
             })
 
             st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
-
-        st.session_state["user_answers"] = [""] * len(bilingual_questions)
-        progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
-
-        # -------------------------------
-        # Store previous sets for consultation
-        # -------------------------------
-        if "all_question_sets" not in st.session_state:
-            st.session_state["all_question_sets"] = []
-        
-        # Append a copy of the current set
-        st.session_state["all_question_sets"].append({
-            "questions": bilingual_questions,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-        
-        st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
@@ -667,23 +653,30 @@ QUESTIONS AND RESPONSES:
         if st.session_state.get("all_question_sets"):
             st.subheader(bilingual_text_ui("📚 Retry Previous Question Sets"))
         
-            # Build a dictionary of preview labels -> sets
             prev_sets = {}
-            for s in st.session_state["all_question_sets"]:
+            for idx, s in enumerate(st.session_state["all_question_sets"]):
                 questions = s.get("questions", [])
-                # Take first 3 questions as preview (or fewer if less)
                 preview_text = " | ".join(q.get("question_en", "") for q in questions[:3])
-                # Optional: truncate if too long
                 if len(preview_text) > 100:
                     preview_text = preview_text[:100] + "..."
-                label = f"{preview_text} (Set from {s.get('timestamp','')})"
+                label = f"Set {idx+1}: {preview_text} ({s.get('timestamp','')})"
                 prev_sets[label] = s
         
-            # Dropdown
-            selected_set_label = st.selectbox(
+            selected_label = st.selectbox(
                 bilingual_text_ui("Select a previous question set to view:"),
-                options=list(prev_sets.keys())
+                options=list(prev_sets.keys()),
+                key="selected_prev_set"
             )
+        
+            if selected_label:
+                selected_set = prev_sets[selected_label]
+        
+                with st.expander(bilingual_text_ui("📄 View Selected Question Set"), expanded=True):
+                    for i, q in enumerate(selected_set["questions"]):
+                        st.markdown(f"**Q{i+1}:** {q.get('question_en','')}")
+                        if target_language_code != "en":
+                            st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
+                        st.markdown("---")
             
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
