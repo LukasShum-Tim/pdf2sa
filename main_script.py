@@ -50,6 +50,9 @@ if "selected_prev_set" not in st.session_state:
 if "mode" not in st.session_state:
     st.session_state["mode"] = "idle"  # idle | generate | retry
 
+if "current_set_id" not in st.session_state:
+    st.session_state["current_set_id"] = None
+
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
@@ -338,7 +341,7 @@ if pdf_text:
         st.rerun()
             
 
-    if st.session_state.get("mode") == "generate" and st.session_state.get("questions") == []:
+    if st.session_state.get("mode") == "generate":
         st.session_state["mode"] = "idle"
     
         pdf_text = st.session_state["pdf_text"]
@@ -477,7 +480,8 @@ if pdf_text:
                 "topics": topics,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             })
-    
+
+            st.session_state["current_set_id"] = new_set_id
             st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
@@ -703,10 +707,10 @@ QUESTIONS AND RESPONSES:
         
                 # Load button
                 if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
+                    st.session_state["current_set_id"] = selected_id
                     st.session_state["questions"] = selected_set["questions"]
                     st.session_state["user_answers"] = [""] * len(selected_set["questions"])
                     st.session_state["evaluations"] = []
-                    st.session_state["question_set_id"] += 1
                     st.session_state["mode"] = "retry"
                     st.rerun()
 
