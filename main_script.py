@@ -57,31 +57,38 @@ def safe_translate(text, target_language_code):
     if target_language_code == "en":
         return text
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": f"
+        prompt = f"""
                 ROLE:
-                You are a helpful multilingual medical educator who helps translate text into a target language with precise medical accuracy.
+                You are a helpful multilingual medical educator who translates text into a target language with precise medical accuracy.
                 
                  RULES:
-                -The translated text NEEDS to be targeted towards an audience of residents, physicians and surgeons.
-                -DO NOT simply translate the text word for word: the translation NEEDS to be MEDICALLY ACCURATE.
+                - The translation MUST be appropriate for residents, physicians, and surgeons
+                - Do NOT translate word-for-word
+                - Preserve correct medical terminology and meaning
 
                 TASK:
-                Translate the following text into {target_language_code}:\n{text}"}
-            ],
+                Translate the following text into {target_language_code}:
+                
+                {text}
+                """
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
         return response.choices[0].message.content.strip()    
     except Exception:
         pass
+        
     try:
         translated = translator.translate(text, dest=target_language_code)
         if translated and hasattr(translated, "text"):
             return translated.text
     except Exception:
-        return text
+        pass
+        
+    return text
 
 # -------------------------------
 # LANGUAGE SELECTION
