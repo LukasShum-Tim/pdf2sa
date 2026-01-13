@@ -343,17 +343,9 @@ if pdf_text:
         st.rerun()
         
         # Clear the flag
-        if st.session_state.get("generate_new_set"):
-            st.session_state["generate_new_set"] = False
+    if st.session_state.get("generate_new_set"):
+        st.session_state["generate_new_set"] = False
 
-        if st.session_state.get("mode") == "generate":
-            st.session_state["mode"] = "idle"
-            
-            # Use existing pdf_text from session_state
-            pdf_text = st.session_state["pdf_text"]
-        
-            # Initialize progress bar
-            progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
         # -------------------------------
         # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
@@ -414,6 +406,7 @@ SOURCE TEXT:
         except Exception as e:
             st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
             all_questions = []
+            return
 
         if all_questions:
             # -------------------------------
