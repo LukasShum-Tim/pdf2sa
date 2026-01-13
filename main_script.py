@@ -669,77 +669,47 @@ QUESTIONS AND RESPONSES:
             if not prev_set_ids:
                 st.info(bilingual_text_ui("No previous question sets available."))
             else:
-                # Ensure active_prev_id is valid
-                active_id = st.session_state.get("active_prev_id")
-                if active_id not in prev_set_ids:
-                    active_id = prev_set_ids[-1]  # fallback to latest set
+                # Initialize selection ONCE
+                if "selected_prev_set" not in st.session_state:
+                    st.session_state["selected_prev_set"] = prev_set_ids[-1]
         
-                # Build preview labels
-                prev_set_labels = []
-                for sid in prev_set_ids:
-                    s = prev_sets[sid]
-                    preview_text = " | ".join(q.get("question_en","") for q in s["questions"][:3])
-                    if len(preview_text) > 100:
-                        preview_text = preview_text[:100] + "..."
-                    prev_set_labels.append(f"Set {sid+1}: {preview_text} ({s['timestamp']})")
-
-                selected_idx = prev_set_ids.index(st.session_state.get("active_prev_id", prev_set_ids[-1]))
-                # Selectbox: display by index
-                if 0 <= selected_idx < len(prev_set_ids):
-                    selected_id = prev_set_ids[selected_idx]
-                    selected_set = prev_sets[selected_id]
-                    st.session_state["active_prev_id"] = selected_id
-                else:
-                    st.error("⚠️ Selected index is out of range. Please try again.")
-                    st.stop()
-                    
-                if st.session_state.get("all_question_sets"):
-                    prev_sets = {s["set_id"]: s for s in st.session_state["all_question_sets"]}
-                    prev_set_ids = list(prev_sets.keys())
-                    
-                    if not prev_set_ids:
-                        st.info("No previous question sets available.")
-                    else:
-                        # Validate active_prev_id
-                        active_id = st.session_state.get("active_prev_id")
-                        if active_id not in prev_set_ids:
-                            active_id = prev_set_ids[-1]  # fallback to latest set
-                        
-                        # Use active_id for the selectbox index
-                        selected_id = st.selectbox(
-                            "Select a previous question set to view:",
-                            options=prev_set_ids,
-                            format_func=lambda sid: f"Set {sid+1}: " + " | ".join(
-                                q.get("question_en","") for q in prev_sets[sid]["questions"][:3]
-                            )[:100] + f"... ({prev_sets[sid]['timestamp']})",
-                            index=prev_set_ids.index(active_id),
-                            key="selected_prev_set"
-                        )
-                        selected_set = prev_sets.get(selected_id)
-                        
-                        if not selected_set:
-                            st.error("⚠️ Selected set no longer exists.")
-                            st.stop()
-                        
-                        st.session_state["active_prev_id"] = selected_id
-
+                # If selection somehow became invalid, recover gracefully
+                if st.session_state["selected_prev_set"] not in prev_set_ids:
+                    st.session_state["selected_prev_set"] = prev_set_ids[-1]
         
-                # Preview selected set
+                selected_id = st.selectbox(
+                    bilingual_text_ui("Select a previous question set to view:"),
+                    options=prev_set_ids,
+                    format_func=lambda sid: (
+                        f"Set {sid+1}: "
+                        + " | ".join(
+                            q.get("question_en", "")
+                            for q in prev_sets[sid]["questions"][:3]
+                        )[:100]
+                        + f"... ({prev_sets[sid]['timestamp']})"
+                    ),
+                    key="selected_prev_set"
+                )
+        
+                selected_set = prev_sets[selected_id]
+        
+                # Preview
                 with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
-                    for i, q in enumerate(selected_set.get("questions", [])):
+                    for i, q in enumerate(selected_set["questions"]):
                         st.markdown(f"**Q{i+1}:** {q.get('question_en', '')}")
                         if target_language_code != "en":
                             st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
                         st.markdown("---")
         
-                # Load set button
+                # Load button
                 if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
                     st.session_state["questions"] = selected_set["questions"]
                     st.session_state["user_answers"] = [""] * len(selected_set["questions"])
                     st.session_state["evaluations"] = []
                     st.session_state["question_set_id"] += 1
                     st.session_state["mode"] = "retry"
-                    st.experimental_rerun()
+                    st.rerun()
+
 
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
