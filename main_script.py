@@ -468,7 +468,11 @@ if pdf_text:
     
             topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
             
+            all_sets = st.session_state.get("all_question_sets", [])
+            new_set_id = len(all_sets)  # unique incremental id
+            
             st.session_state["all_question_sets"].append({
+                "set_id": new_set_id,
                 "questions": bilingual_questions,
                 "topics": topics,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
@@ -658,58 +662,51 @@ QUESTIONS AND RESPONSES:
         if st.session_state.get("all_question_sets"):
             st.subheader(bilingual_text_ui("📚 Retry Previous Question Sets"))
         
-            prev_sets = {}
-            for idx, s in enumerate(st.session_state["all_question_sets"]):
-                set_questions = s.get("questions", [])
-                preview_text = " | ".join(q.get("question_en", "") for q in set_questions[:3])
+            # Map set_id -> set data
+            prev_sets = {s["set_id"]: s for s in st.session_state["all_question_sets"]}
+        
+            # Create stable labels for display (preview first 3 English questions + timestamp)
+            prev_set_ids = list(prev_sets.keys())
+            prev_set_labels = []
+            for sid in prev_set_ids:
+                s = prev_sets[sid]
+                preview_text = " | ".join(q.get("question_en","") for q in s["questions"][:3])
                 if len(preview_text) > 100:
                     preview_text = preview_text[:100] + "..."
-                label = f"Set {idx+1}: {preview_text} ({s.get('timestamp','')})"
-                prev_sets[label] = s
+                prev_set_labels.append(f"Set {sid+1}: {preview_text} ({s['timestamp']})")
+        
+            # Determine active set_id
+            active_id = st.session_state.get("active_prev_id", prev_set_ids[0])
+        
+            # Selectbox: index into prev_set_ids
+            selected_idx = st.selectbox(
+                bilingual_text_ui("Select a previous question set to view:"),
+                options=list(range(len(prev_set_ids))),
+                index=prev_set_ids.index(active_id),
+                key="selected_prev_set"
+            )
+        
+            selected_id = prev_set_ids[selected_idx]
+            selected_set = prev_sets[selected_id]
+            st.session_state["active_prev_id"] = selected_id
+        
+            # Preview selected set without overwriting current questions
+            with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
+                for i, q in enumerate(selected_set.get("questions", [])):
+                    st.markdown(f"**Q{i+1}:** {q.get('question_en', '')}")
+                    if target_language_code != "en":
+                        st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
+                    st.markdown("---")
+        
+            # Button: load selected set into current session
+            if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
+                st.session_state["questions"] = selected_set["questions"]
+                st.session_state["user_answers"] = [""] * len(selected_set["questions"])
+                st.session_state["evaluations"] = []
+                st.session_state["question_set_id"] += 1
+                st.session_state["mode"] = "retry"
+                st.experimental_rerun()
 
-            # List of labels for the selectbox
-            prev_set_labels = list(prev_sets.keys())
-            
-            if not prev_sets:
-                st.info(bilingual_text_ui("No previous question sets available."))
-            else:
-                active_label = st.session_state.get("active_prev_label")
-                if active_label in prev_sets:
-                    default_idx = prev_set_labels.index(active_label)
-
-                else:
-                    default_idx = 0
-                    st.session_state["active_prev_label"] = prev_set_labels[0]   
-                
-                selected_label = st.selectbox(
-                    bilingual_text_ui("Select a previous question set to view:"),
-                    options=prev_set_labels,
-                    index=default_idx,
-                    key="selected_prev_set"
-                )
-    
-                selected_set = prev_sets.get(selected_label)
-    
-                # Preview selected set without overwriting current questions
-                if selected_set:
-                    # Preview the selected set without overwriting current questions
-                    with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
-                        for i, q in enumerate(selected_set.get("questions", [])):
-                            st.markdown(f"**Q{i+1}:** {q.get('question_en', '')}")
-                            if target_language_code != "en":
-                                st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
-                            st.markdown("---")
-    
-                    if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
-                        st.session_state["active_prev_label"] = selected_label
-                        st.session_state["questions"] = selected_set["questions"]
-                        st.session_state["user_answers"] = [""] * len(selected_set["questions"])
-                        st.session_state["evaluations"] = []
-                        st.session_state["question_set_id"] += 1
-                        st.session_state["mode"] = "retry"
-                        st.experimental_rerun()
-                else:
-                    st.warning(bilingual_text_ui("⚠️ Selected question set is no longer available."))
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
     # -------------------------------
