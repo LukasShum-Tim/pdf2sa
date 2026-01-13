@@ -691,7 +691,7 @@ QUESTIONS AND RESPONSES:
         st.session_state["questions"] = []
         st.session_state["user_answers"] = []
         st.session_state["evaluations"] = []
-        
+        st.session_state["generate_new_set"] = True
         st.session_state["question_set_id"] += 1
         st.rerun()
     
