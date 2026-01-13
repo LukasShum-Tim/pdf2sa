@@ -336,142 +336,142 @@ if pdf_text:
         pdf_text = st.session_state["pdf_text"]
         progress = st.progress(0, text=bilingual_text_ui("Generating questions... please wait"))
 
-    # Trigger generation if user clicks "Generate Questions" OR new set flag is set
-    if st.button(bilingual_text_ui("⚡ Generate Questions")):
-        st.session_state["mode"] = "generate"
-        st.session_state["question_set_id"] += 1
-        st.rerun()
-        
-    # -------------------------------
-    # 1️⃣ Prompt GPT to generate all questions
-    # -------------------------------
-    used_topics = get_used_topics()
-    prompt = f"""
-You are an expert medical educator.
-Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
-PREVIOUSLY USED TOPICS (avoid these unless no alternatives remain): {json.dumps(used_topics, indent=2)}
-Your target audience is residents.
-
-TASK:
-1. Identify ALL major topics in the source material.
-2. Exclude any topics listed above.
-3. Randomly select {num_questions} DIFFERENT remaining topics.
-4. Write ONE concise short-answer question per topic, structured like a Royal College of Physicians and Surgeons oral boards exam.
-
-RULES:
-- Ensure the questions are **proportional across the manual**, covering all major topics.
-- Each question must test a DIFFERENT topic
-- Do NOT generate multiple questions from the same subsection
-- Do NOT follow the order of the manual
-- Do NOT repeat themes from earlier question sets
-- Focus on clinical relevance
-- If surgical content exists, include presentation, approach, and management
-- Questions should resemble Royal College oral board style
-
-Return ONLY JSON in this format:
-[
-  {{"topic": "string", "question": "string", "answer_key": "string"}}
-]
-
-SOURCE TEXT:
-{pdf_text}
-"""
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini-2025-04-14",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.8
-        )
-        raw = response.choices[0].message.content.strip()
-        raw = re.sub(r"```(?:json)?|```", "", raw).strip()
-        all_items = json.loads(raw)
-
-        # Normalize structure
-        all_questions = [
-            {
-                "topic": item.get("topic", "").strip(),
-                "question": item.get("question", "").strip(),
-                "answer_key": item.get("answer_key", "").strip()
-            }
-            for item in all_items
-            if item.get("question") and item.get("answer_key")
-        ]
-        
-        progress.progress(50, text=bilingual_text_ui("Questions generated. Translating..."))
-
-    except Exception as e:
-        st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
-        all_questions = []
-
-    if all_questions:
+        # Trigger generation if user clicks "Generate Questions" OR new set flag is set
+        if st.button(bilingual_text_ui("⚡ Generate Questions")):
+            st.session_state["mode"] = "generate"
+            st.session_state["question_set_id"] += 1
+            st.rerun()
+            
         # -------------------------------
-        # 2️⃣ Bilingual translation (batched)
+        # 1️⃣ Prompt GPT to generate all questions
         # -------------------------------
-        bilingual_questions = []
-
-        if target_language_name == "English":
-            for q in all_questions:
-                bilingual_questions.append({
-                    "question_en": q.get("question", ""),
-                    "answer_key_en": q.get("answer_key", "")
-                })
-        else:
-            # Prepare batch text for GPT translation to minimize API calls
-            batch_text = "\n\n".join(
-                [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
+        used_topics = get_used_topics()
+        prompt = f"""
+    You are an expert medical educator.
+    Generate {num_questions} concise short-answer questions and their answer keys based on the following content.
+    PREVIOUSLY USED TOPICS (avoid these unless no alternatives remain): {json.dumps(used_topics, indent=2)}
+    Your target audience is residents.
+    
+    TASK:
+    1. Identify ALL major topics in the source material.
+    2. Exclude any topics listed above.
+    3. Randomly select {num_questions} DIFFERENT remaining topics.
+    4. Write ONE concise short-answer question per topic, structured like a Royal College of Physicians and Surgeons oral boards exam.
+    
+    RULES:
+    - Ensure the questions are **proportional across the manual**, covering all major topics.
+    - Each question must test a DIFFERENT topic
+    - Do NOT generate multiple questions from the same subsection
+    - Do NOT follow the order of the manual
+    - Do NOT repeat themes from earlier question sets
+    - Focus on clinical relevance
+    - If surgical content exists, include presentation, approach, and management
+    - Questions should resemble Royal College oral board style
+    
+    Return ONLY JSON in this format:
+    [
+      {{"topic": "string", "question": "string", "answer_key": "string"}}
+    ]
+    
+    SOURCE TEXT:
+    {pdf_text}
+    """
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini-2025-04-14",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.8
             )
-            translation_prompt = f"""
-Translate the following questions and answers into {target_language_name}.
-Return JSON in the same order with this format:
-[
-{{"question_translated": "string", "answer_key_translated": "string"}}
-]
-
-TEXT:
-{batch_text}
-"""
-            try:
-                translation_resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": translation_prompt}],
-                    temperature=0
+            raw = response.choices[0].message.content.strip()
+            raw = re.sub(r"```(?:json)?|```", "", raw).strip()
+            all_items = json.loads(raw)
+    
+            # Normalize structure
+            all_questions = [
+                {
+                    "topic": item.get("topic", "").strip(),
+                    "question": item.get("question", "").strip(),
+                    "answer_key": item.get("answer_key", "").strip()
+                }
+                for item in all_items
+                if item.get("question") and item.get("answer_key")
+            ]
+            
+            progress.progress(50, text=bilingual_text_ui("Questions generated. Translating..."))
+    
+        except Exception as e:
+            st.error(bilingual_text_ui(f"⚠️ Question generation failed: {e}"))
+            all_questions = []
+    
+        if all_questions:
+            # -------------------------------
+            # 2️⃣ Bilingual translation (batched)
+            # -------------------------------
+            bilingual_questions = []
+    
+            if target_language_name == "English":
+                for q in all_questions:
+                    bilingual_questions.append({
+                        "question_en": q.get("question", ""),
+                        "answer_key_en": q.get("answer_key", "")
+                    })
+            else:
+                # Prepare batch text for GPT translation to minimize API calls
+                batch_text = "\n\n".join(
+                    [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
                 )
-                raw_trans = translation_resp.choices[0].message.content.strip()
-                raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
-                translations = json.loads(raw_trans)
-            except Exception:
-                translations = [{}] * len(all_questions)
-
-            for q, t in zip(all_questions, translations):
-                bilingual_questions.append({
-                    "question_en": q.get("question", ""),
-                    "answer_key_en": q.get("answer_key", ""),
-                    "question_translated": t.get("question_translated", ""),
-                    "answer_key_translated": t.get("answer_key_translated", "")
-                })
-
-        # -------------------------------
-        # 3️⃣ Save to session state
-        # -------------------------------
-        st.session_state["questions"] = bilingual_questions
-        st.session_state["user_answers"] = [""] * len(bilingual_questions)
-        progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
-
-        # -------------------------------
-        # 4️⃣ Store previous sets
-        # -------------------------------
-        if "all_question_sets" not in st.session_state:
-            st.session_state["all_question_sets"] = []
-
-        topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
-        
-        st.session_state["all_question_sets"].append({
-            "questions": bilingual_questions,
-            "topics": topics,
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
+                translation_prompt = f"""
+    Translate the following questions and answers into {target_language_name}.
+    Return JSON in the same order with this format:
+    [
+    {{"question_translated": "string", "answer_key_translated": "string"}}
+    ]
+    
+    TEXT:
+    {batch_text}
+    """
+                try:
+                    translation_resp = client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[{"role": "user", "content": translation_prompt}],
+                        temperature=0
+                    )
+                    raw_trans = translation_resp.choices[0].message.content.strip()
+                    raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
+                    translations = json.loads(raw_trans)
+                except Exception:
+                    translations = [{}] * len(all_questions)
+    
+                for q, t in zip(all_questions, translations):
+                    bilingual_questions.append({
+                        "question_en": q.get("question", ""),
+                        "answer_key_en": q.get("answer_key", ""),
+                        "question_translated": t.get("question_translated", ""),
+                        "answer_key_translated": t.get("answer_key_translated", "")
+                    })
+    
+            # -------------------------------
+            # 3️⃣ Save to session state
+            # -------------------------------
+            st.session_state["questions"] = bilingual_questions
+            st.session_state["user_answers"] = [""] * len(bilingual_questions)
+            progress.progress(100, text=bilingual_text_ui("✅ Done! Questions ready."))
+    
+            # -------------------------------
+            # 4️⃣ Store previous sets
+            # -------------------------------
+            if "all_question_sets" not in st.session_state:
+                st.session_state["all_question_sets"] = []
+    
+            topics = [q.get("topic", "") for q in all_questions if q.get("topic")]
+            
+            st.session_state["all_question_sets"].append({
+                "questions": bilingual_questions,
+                "topics": topics,
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+            })
+    
+            st.success(bilingual_text_ui(f"Generated {len(bilingual_questions)} representative questions successfully!"))
 
 # -------------------------------
 # USER ANSWERS (WITH AUDIO INPUT)
