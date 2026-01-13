@@ -670,39 +670,42 @@ QUESTIONS AND RESPONSES:
             if not prev_sets:
                 st.info(bilingual_text_ui("No previous question sets available."))
             else:
-                default_idx = 0
                 if st.session_state.get("active_prev_label") in prev_sets:
                     default_idx = list(prev_sets.keys()).index(st.session_state["active_prev_label"])
-                    
+
+                else:
+                    default_idx = 0
+                    st.session_state["active_prev_label"] = prev_set_labels[0]   
+                
                 selected_label = st.selectbox(
                     bilingual_text_ui("Select a previous question set to view:"),
-                    options=list(prev_sets.keys()),
+                    options=prev_set_labels,
                     index=default_idx,
                     key="selected_prev_set"
                 )
     
-                selected_set = prev_sets[selected_label]
+                selected_set = prev_sets.get(selected_label)
     
                 # Preview selected set without overwriting current questions
-                with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
-                    for i, q in enumerate(selected_set["questions"]):
-                        st.markdown(f"**Q{i+1}:** {q.get('question_en','')}")
-                        if target_language_code != "en":
-                            st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
-                        st.markdown("---")
-                        
-                        if selected_label:
-                            selected_set = prev_sets[selected_label]
+                if selected_set:
+                    # Preview the selected set without overwriting current questions
+                    with st.expander(bilingual_text_ui("📄 Preview Selected Question Set"), expanded=True):
+                        for i, q in enumerate(selected_set.get("questions", [])):
+                            st.markdown(f"**Q{i+1}:** {q.get('question_en', '')}")
+                            if target_language_code != "en":
+                                st.markdown(f"*({target_language_name})* {q.get('question_translated','')}")
+                            st.markdown("---")
     
-                if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
-                    st.session_state["active_prev_label"] = selected_label
-                    st.session_state["questions"] = selected_set["questions"]
-                    st.session_state["user_answers"] = [""] * len(selected_set["questions"])
-                    st.session_state["evaluations"] = []
-                    st.session_state["question_set_id"] += 1
-                    st.session_state["mode"] = "retry"
-                    st.experimental_rerun()
-
+                    if st.button(bilingual_text_ui("📂 Load Selected Question Set")):
+                        st.session_state["active_prev_label"] = selected_label
+                        st.session_state["questions"] = selected_set["questions"]
+                        st.session_state["user_answers"] = [""] * len(selected_set["questions"])
+                        st.session_state["evaluations"] = []
+                        st.session_state["question_set_id"] += 1
+                        st.session_state["mode"] = "retry"
+                        st.experimental_rerun()
+                  else:
+                        st.warning(bilingual_text_ui("⚠️ Selected question set is no longer available."))
     # -------------------------------
     # NEW BUTTON: Generate a new set of questions
     # -------------------------------
