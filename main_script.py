@@ -47,6 +47,9 @@ if "evaluations" not in st.session_state:
 if "selected_prev_set" not in st.session_state:
     st.session_state["selected_prev_set"] = None
 
+if "mode" not in st.session_state:
+    st.session_state["mode"] = "idle"  # idle | generate | retry
+
 # -------------------------------
 # SAFE TRANSLATION FUNCTION (CACHED)
 # -------------------------------
@@ -329,7 +332,9 @@ if pdf_text:
 
     # Trigger generation if user clicks "Generate Questions" OR new set flag is set
     if st.button(bilingual_text_ui("⚡ Generate Questions")) or st.session_state.get("generate_new_set"):
-    
+        st.session_state["mode"] = "generate"
+        st.session_state["question_set_id"] += 1
+        
         # Clear the flag
         if st.session_state.get("generate_new_set"):
             st.session_state["generate_new_set"] = False
@@ -535,7 +540,7 @@ if st.session_state["questions"]:
                         else:
                             new_text = dictated_text
         
-                        st.session_state[f"ans_{i}"] = new_text
+                        st.session_state[f"ans_{qid}_{i}"] = new_text
                         st.session_state["user_answers"][i] = new_text
                         st.session_state[last_hash_key] = audio_hash
         
@@ -654,8 +659,8 @@ QUESTIONS AND RESPONSES:
         
             prev_sets = {}
             for idx, s in enumerate(st.session_state["all_question_sets"]):
-                questions = s.get("questions", [])
-                preview_text = " | ".join(q.get("question_en", "") for q in questions[:3])
+                set_questions = s.get("questions", [])
+                preview_text = " | ".join(q.get("question_en", "") for q in set_questions[:3])
                 if len(preview_text) > 100:
                     preview_text = preview_text[:100] + "..."
                 label = f"Set {idx+1}: {preview_text} ({s.get('timestamp','')})"
@@ -683,6 +688,7 @@ QUESTIONS AND RESPONSES:
                     st.session_state["user_answers"] = [""] * len(selected_set["questions"])
                     st.session_state["evaluations"] = []
                     st.session_state["question_set_id"] += 1
+                    st.session_state["mode"] = "retry"
                     st.rerun()
 
     # -------------------------------
