@@ -49,27 +49,37 @@ if "evaluations" not in st.session_state:
 # -------------------------------
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_code):
-    """Translate text safely with fallback to GPT and skip English."""
+    """Translate text safely with fallback to google translate and skip English."""
     if not text or not text.strip():
         return text
+        
     # ✅ Skip translation for English
     if target_language_code == "en":
         return text
     try:
-        translated = translator.translate(text, dest=target_language_code)
-        if translated and hasattr(translated, "text"):
-            return translated.text
-    except Exception:
-        pass
-    try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "user", "content": f"Translate this text into {target_language_code}:\n{text}"}
+                {"role": "user", "content": f"
+                ROLE:
+                You are a helpful multilingual medical educator who helps translate text into a target language with precise medical accuracy.
+                
+                 RULES:
+                -The translated text NEEDS to be targeted towards an audience of residents, physicians and surgeons.
+                -DO NOT simply translate the text word for word: the translation NEEDS to be MEDICALLY ACCURATE.
+
+                TASK:
+                Translate the following text into {target_language_code}:\n{text}"}
             ],
             temperature=0
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()    
+    except Exception:
+        pass
+    try:
+        translated = translator.translate(text, dest=target_language_code)
+        if translated and hasattr(translated, "text"):
+            return translated.text
     except Exception:
         return text
 
