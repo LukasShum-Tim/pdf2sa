@@ -74,23 +74,58 @@ def safe_translate(text, target_language_name):
     if target_language_code == "en":
         return text
     try:
-        prompt = f"""
-        You are a professional medical translator.
-        
-        TASK:
-        Translate the following medical text into **{target_language_name}**.
-        
-        STRICT RULES:
-        - Output MUST be written entirely in {target_language_name}
-        - DO NOT keep English sentences
-        - Medical terms may remain Latin-based if appropriate
-        - Do NOT summarize or paraphrase
-        - If unsure, still translate
-        - DO NOT write in English
-        
-        TEXT:
-        {text}
-        """
+        if target_language_code == "uk":
+            prompt = f"""
+            You are a professional medical translator and Ukrainian-speaking clinician.
+            
+            TASK:
+            Translate the following medical exam content into NATURAL, CLINICALLY CORRECT UKRAINIAN.
+            
+            TARGET STYLE:
+            - Ukrainian as used by medical residents in Ukraine
+            - Natural Ukrainian syntax (not word-for-word English)
+            - Clear, concise, exam-appropriate phrasing
+            
+            TERMINOLOGY RULES:
+            - Use standard Ukrainian medical terminology where it exists
+            - If a term is commonly used in English/Latin in Ukrainian practice, keep it (e.g. CT, MRI, sepsis)
+            - Do NOT invent rare or archaic Ukrainian equivalents
+            - Do NOT translate proper disease names unnecessarily
+            
+            QUALITY RULES:
+            - Preserve the full clinical meaning
+            - Minor rephrasing is allowed to improve clarity
+            - Avoid literal English word order
+            - Avoid Russian-style constructions
+            
+            OUTPUT RULES:
+            - Output ONLY Ukrainian
+            - No English
+            - No explanations
+            - No quotes
+            
+            TEXT:
+            {text}
+            """
+            
+        else:
+            prompt = f"""
+            You are a professional medical translator.
+            
+            TASK:
+            Translate the following medical text into **{target_language_name}**.
+            
+            STRICT RULES:
+            - Output MUST be written entirely in {target_language_name}
+            - DO NOT keep English sentences
+            - Medical terms may remain Latin-based if appropriate
+            - Do NOT summarize or paraphrase
+            - If unsure, still translate
+            - DO NOT write in English
+            
+            TEXT:
+            {text}
+            """
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
