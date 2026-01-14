@@ -805,4 +805,3 @@ if st.session_state["questions"]:
     st.markdown(url_instructors)
     st.markdown(bilingual_text_ui("Feedback form for students:"))
     st.markdown(url_students)
-    st.write(john)
