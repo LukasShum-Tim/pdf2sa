@@ -809,5 +809,4 @@ if st.session_state["questions"]:
     st.markdown(url_instructors)
     st.markdown(bilingual_text_ui("Feedback form for students:"))
     st.markdown(url_students)
-    if executed_ukrainian_prompt:
-        st.write("translation successful")
+    st.write(target_language_code)
