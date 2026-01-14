@@ -303,8 +303,10 @@ def bilingual_text(en_text):
 
     if uk_used == True:
         st.write("T")
+        uk_used = "used"
     elif uk_used == False:
         st.write("F")
+        uk_used = "not used"
     return f"{en_text}\n**({target_language_name})**- {translated} uk_used"
 
 def bilingual_text_ui(en_text):
