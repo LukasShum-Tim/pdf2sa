@@ -75,7 +75,7 @@ def safe_translate(text, target_language_name):
         return text
     try:
         if target_language_code == "uk":
-            print("Ukrainian translation works!")
+            st.write("Ukrainian translation works!")
             prompt = f"""
             You are a professional medical translator and Ukrainian-speaking clinician.
             
