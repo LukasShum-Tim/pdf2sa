@@ -583,24 +583,50 @@ if st.session_state["questions"]:
     # -------------------------------
     def score_short_answers(user_answers, questions):
         grading_prompt = f"""
-You are a multilingual Royal College of Physicians and Surgeons oral boards examiner. You are examining the chief residents' answers to oral board exam questions. Score each short-answer response on a 0–2 scale, 0 being extremely deficient, 1 being acceptable, and 2 being exemplary.
-The chief residents' answers can be provided in a different language from English.
-Return ONLY JSON:
-[
-  {{
-    "score": 2,
-    "feedback": "Good answer.",
-    "model_answer": "Key concept here..."
-  }},
-  ...
-]
-
-QUESTIONS AND RESPONSES:
-{json.dumps([
-    {"question": q.get("question_en", ""), "expected": q.get("answer_key_en", ""), "response": a}
-    for q, a in zip(questions, user_answers)
-], indent=2)}
-"""
+        You are a supportive Royal College oral boards examiner assessing RESIDENT-LEVEL answers.
+        
+        Your goal is to fairly assess clinical understanding, not to fail candidates.
+        
+        IMPORTANT GRADING PHILOSOPHY:
+        - Full marks (9–10/10) are achievable for clear, correct, resident-appropriate answers
+        - Do NOT require consultant-level depth for full credit
+        - Award generous partial credit for correct core concepts
+        - Minor omissions or wording issues should NOT heavily penalize the score
+        - Answers may be brief, non-native English, or in another language
+        
+        SCORING RUBRIC (0–10):
+        - 9–10: Correct core concepts, clinically sound, safe management; minor details may be missing
+        - 7–8: Mostly correct with good understanding; some gaps or imprecision
+        - 5–6: Partial understanding; correct ideas but important omissions
+        - 3–4: Limited understanding; some correct fragments
+        - 1–2: Minimal understanding
+        - 0: Unsafe or completely incorrect
+        
+        INSTRUCTIONS:
+        1. Focus on whether the candidate demonstrates SAFE and CORRECT clinical reasoning
+        2. Compare the response to the expected answer key, but do NOT require exact wording
+        3. If the core idea is present, award at least 6/10
+        4. Be especially fair to concise answers typical of oral exams
+        
+        Return ONLY JSON:
+        [
+          {{
+            "score": 0,
+            "feedback": "Brief, constructive feedback explaining the score.",
+            "model_answer": "A concise ideal resident-level answer."
+          }}
+        ]
+        
+        QUESTIONS AND RESPONSES:
+        {json.dumps([
+            {{
+                "question": q.get("question_en", ""),
+                "expected": q.get("answer_key_en", ""),
+                "response": a
+            }}
+            for q, a in zip(questions, user_answers)
+        ], indent=2)}
+        """
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
