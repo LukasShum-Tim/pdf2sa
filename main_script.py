@@ -305,14 +305,14 @@ def bilingual_text(en_text):
         st.write("T")
     elif uk_used == False:
         st.write("F")
-    return f"{en_text}\n**({target_language_name})**: {translated}"
+    return f"{en_text}\n**({target_language_name})**- {translated} uk_used"
 
 def bilingual_text_ui(en_text):
     """Display English + translated text, unless English is selected. Function specifically for not medically important information."""
     if target_language_code == "en":
         return en_text
     translated = ui_translate(en_text, target_language_name)
-    return f"{en_text}\n**({target_language_name})**: {translated}"
+    return f"{en_text}\n**({target_language_name})**- {translated}"
 
 # -------------------------------
 # PDF UPLOAD
@@ -811,4 +811,3 @@ if st.session_state["questions"]:
     st.markdown(url_instructors)
     st.markdown(bilingual_text_ui("Feedback form for students:"))
     st.markdown(url_students)
-    st.write(target_language_code)
