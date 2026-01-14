@@ -619,11 +619,11 @@ if st.session_state["questions"]:
         
         QUESTIONS AND RESPONSES:
         {json.dumps([
-            {{
+            {
                 "question": q.get("question_en", ""),
                 "expected": q.get("answer_key_en", ""),
                 "response": a
-            }}
+            }
             for q, a in zip(questions, user_answers)
         ], indent=2)}
         """
