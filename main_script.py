@@ -67,7 +67,6 @@ def _looks_english(text):
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_name):
     """Translate text safely with fallback to google translate and skip English."""
-    executed_ukrainian_prompt = False
     if not text or not text.strip():
         return text
                 
@@ -76,7 +75,6 @@ def safe_translate(text, target_language_name):
         return text
     try:
         if target_language_code == "uk":
-            executed_ukrainian_prompt = True
             prompt = f"""
             You are a professional medical translator and Ukrainian-speaking clinician.
             
@@ -140,7 +138,7 @@ def safe_translate(text, target_language_name):
         if _looks_english(translated):
             raise ValueError("GPT returned English")
 
-        return translated, executed_ukrainian_prompt
+        return translated
     except Exception:
         pass
         
@@ -298,16 +296,8 @@ def bilingual_text(en_text):
     """Display English + translated text, unless English is selected."""
     if target_language_code == "en":
         return en_text
-    #translated = safe_translate(en_text, target_language_name)
-    translated, uk_used = safe_translate(en_text, target_language_name)
-
-    if uk_used == True:
-        st.write("T")
-        uk_used = "used"
-    elif uk_used == False:
-        st.write("F")
-        uk_used = "not used"
-    return f"{en_text}\n**({target_language_name})**- {translated} uk_used"
+    translated = safe_translate(en_text, target_language_name)
+    return f"{en_text}\n**({target_language_name})**- {translated}"
 
 def bilingual_text_ui(en_text):
     """Display English + translated text, unless English is selected. Function specifically for not medically important information."""
@@ -475,7 +465,6 @@ if pdf_text:
                     [f"Q: {q.get('question','')}\nA: {q.get('answer_key','')}" for q in all_questions]
                 )
                 if target_language_code == "uk":
-                    print("hello")
                     translation_prompt = f"""
                     You are a professional medical translator and Ukrainian-speaking clinician.
                     
@@ -544,7 +533,7 @@ if pdf_text:
                     raw_trans = translation_resp.choices[0].message.content.strip()
                     raw_trans = re.sub(r"```(?:json)?|```", "", raw_trans).strip()
                     translations = json.loads(raw_trans)
-                    print("hello2")
+                    
                 except Exception:
                     translations = [{}] * len(all_questions)
     
