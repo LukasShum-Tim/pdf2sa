@@ -301,8 +301,7 @@ def bilingual_text(en_text):
     #translated = safe_translate(en_text, target_language_name)
     translated, uk_used = safe_translate(en_text, target_language_name)
 
-    if uk_used:
-        st.success("🇺🇦 Ukrainian medical prompt was used")
+    st.write(uk_used)
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
 def bilingual_text_ui(en_text):
