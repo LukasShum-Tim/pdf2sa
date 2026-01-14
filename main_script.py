@@ -67,6 +67,7 @@ def _looks_english(text):
 @st.cache_data(show_spinner=False)
 def safe_translate(text, target_language_name):
     """Translate text safely with fallback to google translate and skip English."""
+    executed_ukrainian_prompt = False
     if not text or not text.strip():
         return text
                 
@@ -75,7 +76,7 @@ def safe_translate(text, target_language_name):
         return text
     try:
         if target_language_code == "uk":
-            john = "code works!"
+            executed_ukrainian_prompt = True
             prompt = f"""
             You are a professional medical translator and Ukrainian-speaking clinician.
             
@@ -139,7 +140,7 @@ def safe_translate(text, target_language_name):
         if _looks_english(translated):
             raise ValueError("GPT returned English")
 
-        return translated 
+        return translated, executed_ukrainian_prompt
     except Exception:
         pass
         
