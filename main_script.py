@@ -670,14 +670,14 @@ if st.session_state["questions"]:
                     st.markdown(f"### Q{i+1}: {q.get('question_en', '')}")
                     
                     if target_language_name == "English":
-                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 10")
                         st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
                         st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
                         st.markdown("---")
 
                     else:                    
                         st.markdown(f"**({target_language_name}): {q.get('question_translated', '')}**")
-                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 2")
+                        st.markdown(f"**Score:** {r.get('score', 'N/A')} / 10")
                         st.markdown(f"**Feedback (English):** {r.get('feedback', '')}")
                         st.markdown(f"**Feedback ({target_language_name}):** {r.get('feedback_translated', '')}")
                         st.markdown(f"**Model Answer (English):** {r.get('model_answer', '')}")
