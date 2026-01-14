@@ -301,7 +301,10 @@ def bilingual_text(en_text):
     #translated = safe_translate(en_text, target_language_name)
     translated, uk_used = safe_translate(en_text, target_language_name)
 
-    st.write(uk_used)
+    if uk_used == True:
+        st.write("T")
+    elif uk_used == False:
+        st.write("F")
     return f"{en_text}\n**({target_language_name})**: {translated}"
 
 def bilingual_text_ui(en_text):
