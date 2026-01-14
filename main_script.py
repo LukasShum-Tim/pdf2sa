@@ -654,7 +654,7 @@ if st.session_state["questions"]:
             # Compute total score
             # -------------------------------
             total_score = sum(r.get("score", 0) for r in results)
-            max_score = len(results) * 2  # each question max 2 points
+            max_score = len(results) * 10  # each question max 10 points
             percentage = round(total_score / max_score * 100, 1)
     
             st.success(bilingual_text_ui("✅ Evaluation complete!"))
