@@ -75,7 +75,7 @@ def safe_translate(text, target_language_name):
         return text
     try:
         if target_language_code == "uk":
-            st.write("Ukrainian translation works!")
+            john = "code works!"
             prompt = f"""
             You are a professional medical translator and Ukrainian-speaking clinician.
             
@@ -804,3 +804,4 @@ if st.session_state["questions"]:
     st.markdown(url_instructors)
     st.markdown(bilingual_text_ui("Feedback form for students:"))
     st.markdown(url_students)
+    st.write(john)
